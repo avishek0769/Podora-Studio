@@ -1,1 +1,63 @@
+@import url("https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400&family=Inter:wght@400;500&display=swap");
 @import "tailwindcss";
+
+@theme {
+	--color-canvas: #0a0a0a;
+	--color-canvas-soft: #1a1c20;
+	--color-canvas-card: #191919;
+	--color-hairline: #212327;
+	--color-body: #dadbdf;
+	--color-body-mid: #7d8187;
+	--color-accent-sunset: #ff7a17;
+	--color-accent-dusk: #7c3aed;
+	--color-accent-breeze: #a0c3ec;
+}
+
+:root {
+	--font-display: "Inter", system-ui, sans-serif;
+	--font-body: "Inter", system-ui, sans-serif;
+	--font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+	color-scheme: dark;
+	background: #0a0a0a;
+	color: #ffffff;
+}
+
+html {
+	scroll-behavior: smooth;
+}
+
+body {
+	margin: 0;
+	min-width: 320px;
+	background: #0a0a0a;
+	color: #ffffff;
+	font-family: var(--font-body);
+	text-rendering: optimizeLegibility;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+body::selection {
+	background: rgba(255, 255, 255, 0.18);
+}
+
+a {
+	color: inherit;
+	text-decoration: none;
+}
+
+#root {
+	min-height: 100vh;
+}
+
+.font-display {
+	font-family: var(--font-display);
+}
+
+.font-body {
+	font-family: var(--font-body);
+}
+
+.font-mono {
+	font-family: var(--font-mono);
+}
