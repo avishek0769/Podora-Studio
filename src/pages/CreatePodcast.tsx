@@ -14,7 +14,7 @@ function CreatePodcast() {
             actions={
                 <>
                     <PrimaryButton href="/dashboard">Dashboard</PrimaryButton>
-                    <OutlineButton href="/dashboard/podcasts/pod-003/room">Preview Room</OutlineButton>
+                    <OutlineButton href="/live/pod-003">Preview Room</OutlineButton>
                 </>
             }
         >

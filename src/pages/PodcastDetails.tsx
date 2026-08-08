@@ -16,7 +16,7 @@ function PodcastDetails() {
             actions={
                 <>
                     <StatusPill status={details.podcast.status} />
-                    <PrimaryButton href={`/dashboard/podcasts/${details.podcast.id}/room`}>Open Room</PrimaryButton>
+                    <PrimaryButton href={`/live/${details.podcast.id}`}>Open Room</PrimaryButton>
                     <OutlineButton href="/dashboard">Dashboard</OutlineButton>
                 </>
             }
@@ -110,10 +110,10 @@ function PodcastDetails() {
 
             <div className="mt-6 flex flex-wrap gap-3">
                 <Link
-                    to={`/dashboard/podcasts/${details.podcast.id}/room`}
+                    to={`/live/${details.podcast.id}`}
                     className="inline-flex items-center justify-center rounded-full border border-white/25 px-4 py-2 text-sm text-white transition-colors hover:border-white/45 hover:bg-white/5"
                 >
-                    Back to room
+                    Back to live room
                 </Link>
                 <Link
                     to="/dashboard"
