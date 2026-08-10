@@ -1,12 +1,12 @@
 import { clerkClient } from "@clerk/express";
 import User from "../models/user.model";
 
-const verifyStrictJWT = async (req, res, next) => {
+const graphqlContext = async (req, res, next) => {
     try {
         const clerkId = req.auth().userId;
 
         if (!clerkId) {
-            return res.status(401).json({ message: "Unauthenticated" });
+            return { user: null }
         }
 
         let user = await User.findOne({ clerkId });
@@ -24,17 +24,16 @@ const verifyStrictJWT = async (req, res, next) => {
                     fullname,
                 });
             } catch (err) {
-                console.error("Failed to automatically sync Clerk user to DB:", err);
-                return res.status(500).json({ message: "Failed to sync user profile" });
+                throw new Error("Failed to automatically sync Clerk user to DB: -> " + err.message)
+                return { user: null }
             }
         }
 
-        req.user = user;
-        next();
+        return { user }
     } catch (error) {
-        console.error("Clerk auth error:", error);
-        next(new Error("Authentication failed"));
+        throw new Error("Clerk auth error: -> " + err.message)
+        return { user: null }
     }
 };
 
-export { verifyStrictJWT };
+export default graphqlContext;
