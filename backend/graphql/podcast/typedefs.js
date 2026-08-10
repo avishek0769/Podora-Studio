@@ -5,7 +5,12 @@ export const typedefs = `#graphql
         startTime: String
         endTime: String
         hostId: String
+        host: User
         recordings: [Recording]
         isLive: Boolean
+    }
+
+    type Timeline {
+        
     }
 `;
