@@ -26,6 +26,9 @@ app.use(clerkMiddleware());
 import podcastRouter from "./routers/podcast.route.js";
 app.use("/api/v1/podcast", podcastRouter);
 
+import recordingRouter from "./routers/recording.route.js";
+app.use("/api/v1/recording", recordingRouter);
+
 app.use(errorHandler);
 
 export { app };
