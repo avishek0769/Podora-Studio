@@ -1,5 +1,5 @@
 import "dotenv/config";
-import app from "./app.js";
+import { server, app } from "./app.js";
 import connectDB from "./utils/connectDB.js";
 
 connectDB().then(() => {
@@ -7,7 +7,7 @@ connectDB().then(() => {
         console.log("Server issue: ", error);
     });
 
-    app.listen(process.env.PORT, () => {
-        console.log("Server running at: ", process.env.PORT);
+    server.listen(process.env.PORT, () => {
+        console.log("Server running ... \n HOST: ", process.env.HOST);
     });
 });

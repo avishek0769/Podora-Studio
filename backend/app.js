@@ -1,11 +1,15 @@
+import http from "http";
 import express from "express";
 import cors from "cors";
 import { clerkMiddleware } from "@clerk/express";
 import { expressMiddleware } from "@as-integrations/express5";
 import createGraphqlServer from "./graphql/index.js";
 import graphqlContext from "./utils/graphqlContext.js";
+import { Server } from "socket.io";
 
 const app = express();
+const server = http.createServer(app);
+const io = Server(server);
 
 app.use(
     cors({
@@ -24,4 +28,8 @@ app.use(
     }),
 );
 
-export default app;
+io.on("connection", (socket) => {
+    console.log("Socket user connected", socket.id);
+});
+
+export { server, app };
