@@ -19,13 +19,12 @@ app.use(
     }),
 );
 app.use(express.urlencoded({ extended: true, limit: "16kb" }));
-app.use(express.static("public"));
 app.use(express.json());
 app.use(clerkMiddleware());
 
 // Routes
-import exampleRouter from "./routers/example.route.js";
-app.use("/api/v1/example", exampleRouter);
+import podcastRouter from "./routers/podcast.route.js";
+app.use("/api/v1/podcast", podcastRouter);
 
 app.use(errorHandler);
 
