@@ -32,8 +32,8 @@ const recordingSchema = new Schema({
     },
     status: {
         type: String,
-        enum: ["uploading", "processing", "completed", "failed"],
-        default: "uploading"
+        enum: ["UPLOADING", "PROCESSING", "COMPLETED", "FAILED"],
+        default: "UPLOADING"
     }
 });
 
