@@ -6,12 +6,10 @@ const podcastSchema = new Schema({
         required: true
     },
     startTime: {
-        type: Date,
-        default: Date.now
+        type: String
     },
     endTime: {
-        type: Date,
-        default: Date.now
+        type: String
     },
     hostId: {
         type: mongoose.Schema.ObjectId,
