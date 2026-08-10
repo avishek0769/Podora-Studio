@@ -1,6 +1,6 @@
 export const queries = `#graphql
     getPodcasts: [Podcast]
-    getPodcast: Podcast
-    getSignedUrl: String
-    getTimeline: Timeline
+    getPodcast(podcastId: String!): Podcast
+    getSignedUrl(podcastId: String!): String
+    getTimeline(podcastId: String!): Timeline
 `

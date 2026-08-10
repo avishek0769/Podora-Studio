@@ -1,14 +1,17 @@
 import { ApolloServer } from "@apollo/server";
+import { User } from "./user/index.ts"
 import { Podcast } from "./podcast/index.ts"
 import { Recording } from "./recording/index.ts"
 
 async function createGraphqlServer() {
     const gqlServer = new ApolloServer({
         typeDefs: `
+            ${User.typedefs}
             ${Podcast.typedefs}
             ${Recording.typedefs}
 
             type Query {
+                ${User.queries}
                 ${Podcast.queries}
                 ${Recording.queries}
             }
@@ -27,6 +30,7 @@ async function createGraphqlServer() {
             },
 
             Query: { 
+                ...User.resolvers.queries,
                 ...Podcast.resolvers.queries,
                 ...Recording.resolvers.queries
             },
