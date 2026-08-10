@@ -6,6 +6,7 @@ import { expressMiddleware } from "@as-integrations/express5";
 import createGraphqlServer from "./graphql/index.js";
 import graphqlContext from "./utils/graphqlContext.js";
 import { Server } from "socket.io";
+import socketConnection from "./socketio.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -28,8 +29,6 @@ app.use(
     }),
 );
 
-io.on("connection", (socket) => {
-    console.log("Socket user connected", socket.id);
-});
+io.on("connection", socketConnection);
 
 export { server, app };

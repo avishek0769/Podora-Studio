@@ -1,654 +1,606 @@
-import { useMemo, useState, useEffect, useRef } from "react";
-import { Link, useLocation, useParams, useNavigate } from "react-router-dom";
-import { Card, OutlineButton, PageShell, PrimaryButton, StatusPill } from "../components/podora-ui";
-import { currentRoom, podcasts } from "../lib/podora-data";
+import { useContext, useEffect, useRef, useState, useCallback } from 'react'
+import ReactPlayer from "react-player"
+import { useNavigate, useParams } from 'react-router-dom'
+import { SocketContext } from '../context/SocketProvider.tsx'
+import * as mediasoupClient from "mediasoup-client"
 
-// Pool of guest names for dynamic simulation
-const MOCK_GUESTS_POOL = [
-    "Sophia Patel",
-    "Liam Vance",
-    "Chloe Zhao",
-    "Derrick Thorne",
-    "Elena Rostova",
-    "Kenji Takahashi",
-    "Zahra Al-Fayed"
-];
+function LiveRoom() {
+    const [myStream, setMyStream] = useState()
+    const [isConnected, setIsConnected] = useState(null)
+    const [remoteStream, setRemoteStream] = useState([])
+    const [remoteSocketId, setRemoteSocketId] = useState(null)
+    const [showUserLeftPopup, setShowUserLeftPopup] = useState(false)
+    const [device, setDevice] = useState()
+    const [rtpCapabilities, setRtpCapabilities] = useState()
+    const [producerTransport, setProducerTransport] = useState()
+    const [audioTransporter, setAudioTransporter] = useState()
+    const [videoTransporter, setVideoTransporter] = useState()
+    const [removeStream, setRemoveStream] = useState(false)
+    const [remoteAudioEnabled, setRemoteAudioEnabled] = useState(true)
+    const pendingVideoTracksRef = useRef({})
+    const pendingAudioTracksRef = useRef({})
+    const consumedProducerIdsRef = useRef(new Set()) // prevents duplicate consumers
+    const socket = useContext(SocketContext)
+    const navigate = useNavigate()
+    const producerTransRef = useRef(false)
+    const isSendTransportConnectedRef = useRef(false)
+    const roomJoinedRef = useRef(false)
+    const producersGot = useRef(false)
+    const deviceRef = useRef(null)
+    const consumerTransportRef = useRef([])
+    const producerTransportRef = useRef([])
+    // const params = {
+    //     encodings: [
+    //         {
+    //             rid: 'r0',
+    //             maxBitrate: 100000,
+    //         },
+    //         {
+    //             rid: 'r1',
+    //             maxBitrate: 300000,
+    //         },
+    //         {
+    //             rid: 'r2',
+    //             maxBitrate: 900000,
+    //         },
+    //     ],
+    //     codecOptions: {
+    //         videoGoogleStartBitrate: 1000
+    //     }
+    // }
+    const { roomId } = useParams()
 
-// Local video feed handler using real camera/audio tracks
-function LocalVideoFeed({
-    cameraEnabled,
-    micEnabled,
-    name,
-}: {
-    cameraEnabled: boolean;
-    micEnabled: boolean;
-    name: string;
-}) {
-    const videoRef = useRef<HTMLVideoElement>(null);
-    const [stream, setStream] = useState<MediaStream | null>(null);
-    const [streamError, setStreamError] = useState<string | null>(null);
+    const handleUserJoined = useCallback(({ socketId }) => {
+        setRemoteSocketId(socketId)
+        // console.log(`User ${socketId} joined !`)
+        socket.emit("user-joined-confirm:server", { user2Id: socketId, socketId: socket.id })
+    }, [setRemoteSocketId])
 
-    useEffect(() => {
-        let activeStream: MediaStream | null = null;
-        navigator.mediaDevices
-            .getUserMedia({
-                video: {
-                    width: { ideal: 640 },
-                    height: { ideal: 480 },
-                    facingMode: "user",
-                },
-                audio: true,
-            })
-            .then((mediaStream) => {
-                activeStream = mediaStream;
-                setStream(mediaStream);
-                if (videoRef.current) {
-                    videoRef.current.srcObject = mediaStream;
+    const handleUserJoinedConfirm = useCallback((socketId) => {
+        setRemoteSocketId(socketId)
+        console.log(`User ${socketId} was waiting !`)
+    }, [setRemoteSocketId])
+
+    let i = 0;
+    const getProducers = () => {
+        socket.emit("getProducers", peer => {
+            console.log("Getting Producers ", ++i, peer)
+            const flatProducerIds = peer.flat()
+            signalNewRecvTransport(flatProducerIds)
+        })
+    }
+
+    const handleProducerClose = ({ remoteProducerId }) => {
+        const consumerToClose = consumerTransportRef.current.find(transportData => transportData.remoteProducerId === remoteProducerId)
+        consumerTransportRef.current = consumerTransportRef.current.filter(transportData => transportData.remoteProducerId !== remoteProducerId)
+
+        consumerToClose.transport.close()
+        consumerToClose.consumer.close()
+
+        setRemoveStream(true)
+        setShowUserLeftPopup(true)
+        setTimeout(() => {
+            setShowUserLeftPopup(false)
+        }, 2500);
+    }
+
+    const handleNewProducer = ({ newProducers, i }) => {
+        console.log("New Producer", i, newProducers)
+        signalNewRecvTransport(newProducers)
+    }
+
+    const handleCallEnd = () => {
+        producerTransportRef.current.forEach(producerData => {
+            producerData.transport.close()
+            producerData.producer.close()
+        })
+        consumerTransportRef.current.forEach(consumerData => {
+            consumerData.transport.close()
+            consumerData.consumer.close()
+        })
+        
+        myStream.getTracks().forEach(track => {
+            track.stop();
+        });
+        setMyStream(null)
+        navigate("/live");
+        setTimeout(() => window.location.reload(), 200);
+    }
+
+    // Step-1: Get RTP Capabilities from the router created in the server 
+    const joinRoom = () => {
+        socket.emit("joinRoom", { roomId }, (data) => {
+            setRtpCapabilities(data.rtpCapabilities)
+        })
+    }
+
+    // Step-2: Create a Device using the RTP Capabilities
+    const createDevice = useCallback(async () => {
+        try {
+            const newDevice = new mediasoupClient.Device()
+            await newDevice.load({ routerRtpCapabilities: rtpCapabilities })
+            deviceRef.current = newDevice
+            setDevice(newDevice)
+            return newDevice
+        }
+        catch (error) {
+            console.log(error)
+            if (error.name === 'UnsupportedError') console.warn('browser not supported');
+        }
+    }, [rtpCapabilities])
+
+    // Step-3: Create a Producer/Send Transport
+    const createSendTransport = useCallback(() => {
+        console.log("Called createSendTransport")
+
+        socket.emit("createWebRTCTransport", { consumer: false }, ({ params }) => {
+            // console.log(params)
+            const producerTransport = deviceRef.current.createSendTransport(params)
+
+            producerTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
+                console.log("DTLS Params on Producer Connect --> ", dtlsParameters)
+                try {
+                    await socket.emit("producerTransport-connect", { dtlsParameters })
+                    callback()
+                }
+                catch (error) {
+                    errback(error)
                 }
             })
-            .catch((err) => {
-                console.error("Camera access failed:", err);
-                setStreamError(err.message || "Permission Denied");
-            });
+
+            producerTransport.on("produce", (parameters, callback, errback) => {
+                console.log("Parameters on Producer Produce --> ", parameters)
+                try {
+                    socket.emit("producerTransport-produce", {
+                        kind: parameters.kind,
+                        rtpParameters: parameters.rtpParameters,
+                        appData: parameters.appData,
+                    }, ({ id, producerExists }) => {
+                        callback({ id })
+                        if (producerExists) {
+                            console.log("Producer Exists --> ", producerExists)
+                            if(!producersGot.current){
+                                getProducers()
+                                producersGot.current = true
+                            }
+                        };
+                    })
+                }
+                catch (error) {
+                    errback(error)
+                }
+            })
+            setProducerTransport(producerTransport)
+        })
+    }, [device, producerTransport])
+
+    // Step-4: Create Producer and start sending your video track by connecting to the Producer Transport
+    const connectSendTransport = useCallback(async () => {
+        let videoTrack = myStream.getVideoTracks()[0]
+        let audioTrack = myStream.getAudioTracks()[0]
+        
+        let newVideoProducer = await producerTransport.produce({ track: videoTrack });
+        let newAudioProducer = await producerTransport.produce({ track: audioTrack });
+        
+        producerTransportRef.current = [
+            {
+                transport: producerTransport,
+                producer: newVideoProducer,
+            },
+            {
+                transport: producerTransport,
+                producer: newAudioProducer,
+            }
+        ]
+
+        newVideoProducer.on("trackend", () => {
+            console.log("Video Track ended")
+        })
+        newVideoProducer.on("transportclose", () => {
+            console.log("Video Producer Transport closed")
+        })
+        newAudioProducer.on("trackend", () => {
+            console.log("Audio Track ended")
+        })
+        newAudioProducer.on("transportclose", () => {
+            console.log("Audio Producer Transport closed")
+        })
+
+        setVideoTransporter(newVideoProducer)
+        setAudioTransporter(newAudioProducer)
+    }, [producerTransport, myStream])
+
+    // Step-3or: Create a Consumer/Receive Transport and immediately consume each producer
+    const signalNewRecvTransport = useCallback((remoteProducerIds) => {
+        console.log("Called signalNewRecvTransport", remoteProducerIds)
+
+        socket.emit("createWebRTCTransport", { consumer: true }, ({ params }) => {
+            if (params.error) {
+                console.error(params.error)
+                return
+            }
+            let consumerTransport = deviceRef.current.createRecvTransport(params)
+
+            consumerTransport.on("connect", ({ dtlsParameters }, callback, errback) => {
+                try {
+                    socket.emit("consumerTransport-connect", {
+                        dtlsParameters,
+                        serverConsumerTransportId: params.id
+                    })
+                    callback()
+                }
+                catch (error) {
+                    errback(error)
+                }
+            })
+
+            // Immediately consume each producer — no deferred state needed
+            remoteProducerIds.forEach(remoteProducerId => {
+                connectRecvTransport(consumerTransport, remoteProducerId, params.id)
+            })
+        })
+    }, [device])
+
+    // Step-4or: Create a Consumer and start receiving the producer's video/audio feed
+    const connectRecvTransport = useCallback((consumerTransport, remoteProducerId, serverConsumerTransportId) => {
+        // Guard against duplicate consumption (e.g. if new-producer fires twice)
+        if (consumedProducerIdsRef.current.has(remoteProducerId)) {
+            console.log("Already consuming producer", remoteProducerId, "— skipping")
+            return
+        }
+        consumedProducerIdsRef.current.add(remoteProducerId)
+        console.log("Called connectRecvTransport for", remoteProducerId)
+
+        socket.emit("consumerTransport-consume", {
+            rtpCapabilities: deviceRef.current.rtpCapabilities,
+            serverConsumerTransportId,
+            remoteProducerId
+        },
+            async ({ params }) => {
+                if (params.error) {
+                    console.error(params.error)
+                    consumedProducerIdsRef.current.delete(remoteProducerId)
+                    return
+                }
+                let consumer = await consumerTransport.consume(params)
+
+                consumerTransportRef.current = [
+                    ...consumerTransportRef.current,
+                    {
+                        transport: consumerTransport,
+                        remoteProducerId,
+                        consumer,
+                        serverConsumerTransportId
+                    }
+                ]
+
+                const { track } = consumer;
+                console.log("Track", track)
+
+                socket.emit("consumer-resume", { consumerId: consumer.id })
+
+                // Accumulate tracks in refs and build MediaStream when both video+audio arrive
+                if (track.kind === "video") {
+                    pendingVideoTracksRef.current[remoteProducerId] = track
+                } else {
+                    pendingAudioTracksRef.current[remoteProducerId] = track
+                }
+
+                const videoKeys = Object.keys(pendingVideoTracksRef.current)
+                const audioKeys = Object.keys(pendingAudioTracksRef.current)
+                const minPaired = Math.min(videoKeys.length, audioKeys.length)
+                if (minPaired > 0) {
+                    const newStreams = []
+                    for (let idx = 0; idx < minPaired; idx++) {
+                        const vTrack = pendingVideoTracksRef.current[videoKeys[idx]]
+                        const aTrack = pendingAudioTracksRef.current[audioKeys[idx]]
+                        newStreams.push(new MediaStream([vTrack, aTrack]))
+                        delete pendingVideoTracksRef.current[videoKeys[idx]]
+                        delete pendingAudioTracksRef.current[audioKeys[idx]]
+                    }
+                    setRemoteStream(prev => [...prev, ...newStreams])
+                }
+            })
+    }, [device])
+
+    // Track pairing is now handled inline in connectRecvTransport via refs (see above)
+    // This effect is intentionally removed to avoid the race condition where
+    // videoTracks and audioTracks state updates weren't synchronised
+
+    useEffect(() => {
+        if (rtpCapabilities) {
+            createDevice()
+        }
+    }, [rtpCapabilities])
+
+    useEffect(() => {
+        if (device) {
+            if (!producerTransRef.current) {
+                createSendTransport();
+                producerTransRef.current = true
+            }
+        }
+    }, [device])
+
+    useEffect(() => {
+        if (producerTransport && myStream && producerTransRef.current && !isSendTransportConnectedRef.current) {
+            connectSendTransport()
+            isSendTransportConnectedRef.current = true
+        }
+    }, [producerTransport, myStream])
+
+    // Consumer transport creation + consumption is now handled directly in signalNewRecvTransport.
+    // The old canConnectToRecvTransport + connectingConsumerTransportData effect has been removed
+    // because it re-ran on every state change, creating duplicate consumers.
+
+    useEffect(() => {
+        if (!myStream && !roomJoinedRef.current) {
+            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+                .then((stream) => {
+                    setMyStream(stream)
+                })
+        }
+        if (myStream && !roomJoinedRef.current) {
+            joinRoom()
+            roomJoinedRef.current = true
+        }
+    }, [myStream])
+
+    useEffect(() => {
+        if(removeStream && remoteStream) {
+            let filteredStream = remoteStream.filter(stream => stream.active)
+            setRemoteStream(filteredStream)
+            setRemoveStream(false)
+        }
+    }, [remoteStream, removeStream])
+
+    useEffect(() => {
+        socket.on("user-joined", handleUserJoined)
+        socket.on("user-joined-confirm:client", handleUserJoinedConfirm)
+        socket.on("new-producer", handleNewProducer)
+        socket.on('producer-closed', handleProducerClose)
 
         return () => {
-            if (activeStream) {
-                activeStream.getTracks().forEach((track) => track.stop());
-            }
-        };
-    }, []);
-
-    // Sync cameraEnabled state with local stream tracks
-    useEffect(() => {
-        if (stream) {
-            stream.getVideoTracks().forEach((track) => {
-                track.enabled = cameraEnabled;
-            });
+            socket.off("user-joined", handleUserJoined)
+            socket.off("user-joined-confirm:client", handleUserJoinedConfirm)
+            socket.off("new-producer", handleNewProducer)
+            socket.off('producer-closed', handleProducerClose)
         }
-    }, [cameraEnabled, stream]);
+    }, [socket, handleUserJoined, handleUserJoinedConfirm])
 
-    // Sync micEnabled state with local stream tracks
-    useEffect(() => {
-        if (stream) {
-            stream.getAudioTracks().forEach((track) => {
-                track.enabled = micEnabled;
-            });
-        }
-    }, [micEnabled, stream]);
+    // Helper function to determine grid layout based on participant count
+    const getGridLayout = (participantCount) => {
+        if (participantCount <= 1) return "grid-cols-1"
+        if (participantCount === 2) return "grid-cols-2 md:grid-cols-2"
+        if (participantCount <= 4) return "grid-cols-2 md:grid-cols-2"
+        if (participantCount <= 6) return "grid-cols-2 md:grid-cols-2 lg:grid-cols-3"
+        return "grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+    }
 
-    if (!cameraEnabled || streamError || !stream) {
-        return (
-            <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-lg border border-white/5 bg-gradient-to-br from-[#7c3aed]/15 to-canvas-soft p-6">
-                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(124,58,237,0.1),transparent)]" />
-                <div className="relative z-10 flex flex-col items-center text-center">
-                    <div className="flex h-20 w-20 items-center justify-center rounded-full border border-white/10 bg-white/5 shadow-2xl backdrop-blur-md">
-                        <span className="font-display text-[26px] font-medium text-white">
-                            {name.charAt(0).toUpperCase()}
-                        </span>
+    // Calculate total participants (my stream + remote streams)
+    const totalParticipants = 1 + (remoteStream?.length || 0)
+
+    return (
+        <div className="min-h-screen bg-gray-950 text-white font-sans">
+            {/* User Left Popup */}
+            {showUserLeftPopup && (
+                <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[100] animate-slide-down">
+                    <div className="bg-gradient-to-r from-gray-900/95 to-gray-800/95 border border-red-500/40 rounded-xl px-4 py-3 mx-4 backdrop-blur-lg shadow-2xl shadow-red-500/20 w-[280px] md:w-auto">
+                        <div className="flex items-center gap-3">
+                            <div className="text-2xl">👋</div>
+                            <div>
+                                <h3 className="text-sm font-semibold text-red-400">
+                                    User Left
+                                </h3>
+                                <p className="text-gray-300 text-xs">
+                                    Participant has left the call
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setShowUserLeftPopup(false)}
+                                className="ml-2 text-gray-400 hover:text-white transition-colors"
+                            >
+                                ✕
+                            </button>
+                        </div>
                     </div>
-                    <span className="mt-4 text-xs font-mono uppercase tracking-[0.2em] text-body-mid">
-                        {!cameraEnabled ? "Camera turned off" : streamError ? "Camera offline" : "Starting camera..."}
-                    </span>
-                    {streamError && (
-                        <span className="mt-1 text-[11px] text-[#7c3aed]/70">
-                            ({streamError === "Permission Denied" || streamError.includes("permission")
-                                ? "Access blocked by browser"
-                                : streamError})
-                        </span>
+                </div>
+            )}
+
+            {/* Header */}
+            <header className="px-6 py-4 border-b border-gray-700 bg-black/30 backdrop-blur-lg sticky top-0 z-50">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="text-2xl drop-shadow-lg">🔴</div>
+                        <h1 className="text-xl font-bold bg-gradient-to-r from-red-400 to-teal-400 bg-clip-text text-transparent">
+                            Live Video Call
+                        </h1>
+                    </div>
+
+                    {/* Connection Status */}
+                    <div className="flex items-center gap-2">
+                        {isConnected === true ? (
+                            <>
+                                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                                <span className="text-green-400 text-sm font-medium">Connected</span>
+                            </>
+                        ) : isConnected === false ? (
+                            <>
+                                <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+                                <span className="text-yellow-400 text-sm font-medium">Connecting...</span>
+                            </>
+                        ) : isConnected === undefined ? (
+                            <>
+                                <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse"></div>
+                                <span className="text-red-400 text-sm font-medium">Failed</span>
+                            </>
+                        ) : (
+                            <>
+                                <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                                <span className="text-gray-400 text-sm font-medium">Waiting</span>
+                            </>
+                        )}
+                    </div>
+                </div>
+            </header>
+
+            {/* Video Container */}
+            <div className="flex-1 p-4 md:p-6 overflow-hidden">
+                <div className={`h-[calc(100vh-140px)] overflow-y-auto overflow-x-hidden grid gap-4 md:gap-6 auto-rows-min ${getGridLayout(totalParticipants)}`}>
+                    {/* My Video */}
+                    <div className="bg-gray-900/50 border border-gray-700 rounded-2xl overflow-hidden backdrop-blur-lg min-h-[200px] h-[250px] md:h-[300px]">
+                        <div className="h-full relative">
+                            {myStream ? (
+                                <ReactPlayer
+                                    url={myStream}
+                                    muted
+                                    playing
+                                    playsinline
+                                    config={{ file: { attributes: { playsInline: true } } }}
+                                    width="100%"
+                                    height="100%"
+                                    style={{ objectFit: 'cover' }}
+                                />
+                            ) : (
+                                <div className="h-full flex items-center justify-center">
+                                    <div className="text-center">
+                                        <div className="text-4xl md:text-6xl mb-4 opacity-30">📹</div>
+                                        <p className="text-gray-400 text-sm">Loading camera...</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Video Label */}
+                            <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-sm px-3 py-1 rounded-lg">
+                                <span className="text-white text-sm font-medium">You</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Remote Video Streams */}
+                    {remoteStream && remoteStream.length > 0 ? (
+                        remoteStream.map((stream, index) => (
+                            <div key={index} className="bg-gray-900/50 border border-gray-700 rounded-2xl overflow-hidden backdrop-blur-lg min-h-[200px] h-[250px] md:h-[300px]">
+                                <div className="h-full relative">
+                                    <ReactPlayer
+                                        url={stream}
+                                        playing
+                                        muted={!remoteAudioEnabled}
+                                        playsinline
+                                        config={{ file: { attributes: { playsInline: true } } }}
+                                        onError={(e) => console.error("Remote player error", e)}
+                                        width="100%"
+                                        height="100%"
+                                        style={{ objectFit: 'cover' }}
+                                    />
+
+                                    {/* Video Label */}
+                                    <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-sm px-3 py-1 rounded-lg">
+                                        <span className="text-white text-sm font-medium">
+                                            Participant {index + 1}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        // Placeholder when no remote streams
+                        remoteSocketId && (
+                            <div className="bg-gray-900/50 border border-gray-700 rounded-2xl overflow-hidden backdrop-blur-lg min-h-[200px] h-[250px] md:h-[300px]">
+                                <div className="h-full flex items-center justify-center">
+                                    <div className="text-center">
+                                        <div className="text-4xl md:text-6xl mb-4 opacity-30">👤</div>
+                                        <p className="text-gray-400 text-sm">Waiting for video...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )
+                    )}
+
+                    {/* Waiting for participants placeholder */}
+                    {!remoteSocketId && (
+                        <div className="bg-gray-900/50 border border-gray-700 rounded-2xl overflow-hidden backdrop-blur-lg min-h-[200px] h-[250px] md:h-[300px]">
+                            <div className="h-full flex items-center justify-center">
+                                <div className="text-center">
+                                    <div className="text-4xl md:text-6xl mb-4 opacity-30">👤</div>
+                                    <p className="text-gray-400 text-sm">Waiting for participant...</p>
+                                </div>
+                            </div>
+                        </div>
                     )}
                 </div>
             </div>
-        );
-    }
 
-    return (
-        <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="h-full w-full rounded-lg object-cover"
-        />
-    );
-}
-
-// Canvas-animated feed to represent remote participants realistically
-function RemoteVideoFeed({ name, isTalking }: { name: string; isTalking: boolean }) {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-
-        let animationFrameId: number;
-        let phase = 0;
-        const speed = 0.04;
-        
-        let hash = 0;
-        for (let i = 0; i < name.length; i++) {
-            hash = name.charCodeAt(i) + ((hash << 5) - hash);
-        }
-        const hue = Math.abs(hash % 360);
-
-        const render = () => {
-            if (!canvas || !ctx) return;
-            const width = canvas.width;
-            const height = canvas.height;
-
-            // Clear canvas with a nice studio gradient background
-            const bgGradient = ctx.createLinearGradient(0, 0, width, height);
-            bgGradient.addColorStop(0, `hsla(${hue}, 25%, 12%, 1)`);
-            bgGradient.addColorStop(1, `#08080a`);
-            ctx.fillStyle = bgGradient;
-            ctx.fillRect(0, 0, width, height);
-
-            // Draw abstract perspective lines
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.02)";
-            ctx.lineWidth = 1;
-            for (let i = 0; i < width; i += 50) {
-                ctx.beginPath();
-                ctx.moveTo(i, 0);
-                ctx.lineTo(i, height);
-                ctx.stroke();
-            }
-            for (let i = 0; i < height; i += 50) {
-                ctx.beginPath();
-                ctx.moveTo(0, i);
-                ctx.lineTo(width, i);
-                ctx.stroke();
-            }
-
-            // Floating glowing ambient lights
-            ctx.fillStyle = `hsla(${hue}, 80%, 55%, 0.08)`;
-            for (let i = 0; i < 4; i++) {
-                const x = width * 0.5 + Math.cos(phase * 0.25 + i * 1.5) * (width * 0.25);
-                const y = height * 0.5 + Math.sin(phase * 0.35 + i * 2) * (height * 0.25);
-                const size = 20 + Math.sin(phase + i) * 6;
-                ctx.beginPath();
-                ctx.arc(x, y, size, 0, Math.PI * 2);
-                ctx.fill();
-            }
-
-            const centerX = width / 2;
-            const centerY = height / 2 - 10;
-            
-            // Halo glow for talking states
-            const glowSize = 35 + (isTalking ? Math.sin(phase * 2.5) * 6 : 0);
-            const haloGradient = ctx.createRadialGradient(centerX, centerY, 5, centerX, centerY, glowSize);
-            haloGradient.addColorStop(0, `hsla(${hue}, 70%, 50%, 0.2)`);
-            haloGradient.addColorStop(1, `hsla(${hue}, 70%, 50%, 0)`);
-            ctx.fillStyle = haloGradient;
-            ctx.beginPath();
-            ctx.arc(centerX, centerY, glowSize, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Head silhouette
-            ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
-            ctx.beginPath();
-            ctx.arc(centerX, centerY - 15, 20, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Shoulders silhouette
-            ctx.beginPath();
-            ctx.arc(centerX, centerY + 30, 35, Math.PI, 0);
-            ctx.fill();
-
-            // Audio wave representation at the bottom
-            const waveY = height - 25;
-            const waveAmplitude = isTalking ? 16 : 2;
-            ctx.strokeStyle = `hsla(${hue}, 75%, 60%, 0.5)`;
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            for (let x = 25; x <= width - 25; x += 3) {
-                const normalizedX = (x - 25) / (width - 50);
-                const envelope = Math.sin(normalizedX * Math.PI);
-                const y = waveY + Math.sin(normalizedX * 12 + phase * 3) * waveAmplitude * envelope;
-                if (x === 25) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-            }
-            ctx.stroke();
-
-            phase += speed;
-            animationFrameId = requestAnimationFrame(render);
-        };
-
-        const resizeCanvas = () => {
-            canvas.width = canvas.parentElement?.clientWidth || 400;
-            canvas.height = canvas.parentElement?.clientHeight || 300;
-        };
-
-        resizeCanvas();
-        render();
-
-        const resizeObserver = new ResizeObserver(() => {
-            resizeCanvas();
-        });
-        if (canvas.parentElement) {
-            resizeObserver.observe(canvas.parentElement);
-        }
-
-        return () => {
-            cancelAnimationFrame(animationFrameId);
-            resizeObserver.disconnect();
-        };
-    }, [name, isTalking]);
-
-    return (
-        <canvas
-            ref={canvasRef}
-            className="h-full w-full object-cover rounded-lg"
-        />
-    );
-}
-
-function LiveRoom() {
-    const { podcastId } = useParams();
-    const location = useLocation();
-    const navigate = useNavigate();
-
-    // Retrieve name and user details from state
-    const guestName = (location.state as { guestName?: string } | null)?.guestName;
-    const isHost = !guestName;
-
-    const room = useMemo(() => {
-        if (podcastId === currentRoom.podcastId) {
-            return currentRoom;
-        }
-
-        const podcast = podcasts.find((item) => item.id === podcastId);
-        if (!podcast) {
-            return currentRoom;
-        }
-
-        return {
-            ...currentRoom,
-            podcastId: podcast.id,
-            podcastName: podcast.name,
-            roomStatus: podcast.status,
-        };
-    }, [podcastId]);
-
-    // Setup initial participant structure
-    const localUser = {
-        name: isHost ? room.creatorName : (guestName || "Guest"),
-        role: isHost ? "You (Host)" : "You",
-        isLocal: true,
-        tone: isHost ? "from-[#ff7a17]/25 to-white/10" : "from-[#7c3aed]/25 to-white/10",
-        recordingState: "recording" as const,
-    };
-
-    const initialRemotes = useMemo(() => {
-        return room.participants
-            .filter((p) => p.name !== localUser.name)
-            .map((p) => {
-                const isCreator = p.name === room.creatorName;
-                return {
-                    name: p.name,
-                    role: isCreator ? "Host" : "Guest",
-                    isLocal: false,
-                    tone: isCreator ? "from-[#ff7a17]/15 to-white/5" : "from-white/10 to-white/5",
-                    recordingState: p.recordingState,
-                };
-            });
-    }, [room, localUser.name]);
-
-    // Local user controls state
-    const [cameraEnabled, setCameraEnabled] = useState(true);
-    const [micEnabled, setMicEnabled] = useState(true);
-
-    // List of active remote participants (allowing additions/removals)
-    const [remoteParticipants, setRemoteParticipants] = useState(initialRemotes);
-
-    // Track active speaking participant
-    const [talkingParticipant, setTalkingParticipant] = useState<string | null>(null);
-
-    // Cycle talking states to show dynamic call activity
-    useEffect(() => {
-        const interval = setInterval(() => {
-            const randomVal = Math.random();
-            if (randomVal < 0.3) {
-                // Mic volume spike from local user
-                if (micEnabled) {
-                    setTalkingParticipant(localUser.name);
-                } else {
-                    setTalkingParticipant(null);
-                }
-            } else if (randomVal < 0.4) {
-                setTalkingParticipant(null); // silence
-            } else {
-                if (remoteParticipants.length > 0) {
-                    const idx = Math.floor(Math.random() * remoteParticipants.length);
-                    setTalkingParticipant(remoteParticipants[idx].name);
-                } else {
-                    setTalkingParticipant(null);
-                }
-            }
-        }, 2500);
-
-        return () => clearInterval(interval);
-    }, [remoteParticipants, localUser.name, micEnabled]);
-
-    // Dynamically calculate grid columns and max widths based on participant count
-    const gridClasses = useMemo(() => {
-        const count = remoteParticipants.length + 1; // +1 for localUser
-        if (count === 1) return "grid-cols-1 max-w-xl mx-auto";
-        if (count === 2) return "grid-cols-1 md:grid-cols-2 max-w-4xl mx-auto";
-        if (count === 3) return "grid-cols-1 md:grid-cols-3 max-w-5xl mx-auto";
-        if (count === 4) return "grid-cols-2 max-w-4xl mx-auto";
-        if (count <= 6) return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3";
-        return "grid-cols-2 md:grid-cols-3 lg:grid-cols-4";
-    }, [remoteParticipants.length]);
-
-    // Action simulation controls
-    const handleAddMockParticipant = () => {
-        const nextGuest = MOCK_GUESTS_POOL[remoteParticipants.length % MOCK_GUESTS_POOL.length];
-        const suffix = remoteParticipants.some(p => p.name === nextGuest) 
-            ? ` ${Math.floor(Math.random() * 9) + 1}` 
-            : "";
-        const uniqueName = nextGuest + suffix;
-
-        setRemoteParticipants(prev => [
-            ...prev,
-            {
-                name: uniqueName,
-                role: "Guest",
-                isLocal: false,
-                tone: "from-white/10 to-white/5",
-                recordingState: "recording" as const,
-            }
-        ]);
-    };
-
-    const handleRemoveMockParticipant = () => {
-        if (remoteParticipants.length > 0) {
-            setRemoteParticipants(prev => prev.slice(0, -1));
-        }
-    };
-
-    const handleEndSession = () => {
-        // Stop any media tracks
-        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-            .then(s => s.getTracks().forEach(t => t.stop()))
-            .catch(() => {});
-        navigate(isHost ? `/dashboard/podcasts/${room.podcastId}` : "/dashboard");
-    };
-
-    return (
-        <PageShell
-            eyebrow="Live Room"
-            title={room.podcastName}
-            description="This is the shared call surface for host and guests. Video feeds resize automatically in a responsive grid so the interface works from two people to many participants."
-            actions={
-                <>
-                    <StatusPill status={room.roomStatus} />
-                    <OutlineButton href={`/dashboard/podcasts/${room.podcastId}`}>Podcast Details</OutlineButton>
-                    <PrimaryButton href="/dashboard">Dashboard</PrimaryButton>
-                </>
-            }
-        >
-            <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
-                <Card className="p-5 sm:p-6 flex flex-col justify-between">
-                    <div>
-                        <div className="flex flex-col gap-4 border-b border-hairline pb-5 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                                <p className="font-mono text-[12px] uppercase tracking-[0.22em] text-body-mid">Live session</p>
-                                <h2 className="mt-2 font-display text-[26px] tracking-[-0.04em] text-white">Video calling studio</h2>
-                            </div>
-                            <span className="flex items-center gap-2 rounded-full border border-[#7c3aed]/40 bg-[#7c3aed]/10 px-3.5 py-1.5 text-xs text-white">
-                                <span className="relative flex h-2 w-2">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                                </span>
-                                {remoteParticipants.length + 1} Connected
-                            </span>
+            {/* Control Panel */}
+            <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-gray-950 via-gray-950/95 to-transparent backdrop-blur-lg border-t border-gray-700">
+                <div className="px-4 py-2 md:px-6 md:py-3 flex justify-center items-center gap-4">
+                    {/* Status Message */}
+                    {isConnected === null && (
+                        <div className="text-center mb-2">
+                            <p className="text-gray-300 text-sm md:text-sm">
+                                {remoteSocketId
+                                    ? "✅ Participant joined! Ready to start call..."
+                                    : "⏳ Waiting for participant to join..."
+                                }
+                            </p>
                         </div>
+                    )}
 
-                        {/* Video feeds grid */}
-                        <div className={`mt-6 grid gap-4 transition-all duration-300 ${gridClasses}`}>
-                            {/* Local participant card */}
-                            <div className={`relative aspect-video rounded-xl border overflow-hidden transition-all duration-300 ${
-                                talkingParticipant === localUser.name 
-                                    ? "border-white ring-2 ring-white/10" 
-                                    : "border-white/10 hover:border-white/20"
-                            }`}>
-                                <div className="absolute inset-0 bg-canvas-soft">
-                                    <LocalVideoFeed 
-                                        cameraEnabled={cameraEnabled} 
-                                        micEnabled={micEnabled} 
-                                        name={localUser.name}
-                                    />
-                                </div>
+                    {/* Control Buttons */}
+                    <div className="flex items-center justify-center gap-2 md:gap-3">
+                        {remoteStream && remoteStream.length > 0 && (
+                            <button
+                                onClick={() => setRemoteAudioEnabled(prev => !prev)}
+                                className="flex items-center gap-1 px-4 py-2 md:px-6 bg-white/10 border border-white/20 text-gray-200 font-semibold rounded-lg md:rounded-xl transition-all duration-300 hover:bg-white/20 text-sm md:text-base"
+                            >
+                                <span className="text-sm md:text-lg">🔊</span>
+                                <span className="hidden md:inline">{remoteAudioEnabled ? "Mute Remote" : "Enable Audio"}</span>
+                            </button>
+                        )}
 
-                                {/* Participant overlay metadata */}
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-between p-4.5 pointer-events-none">
-                                    <div className="flex items-center justify-between">
-                                        <span className="rounded-full bg-white/10 backdrop-blur-md px-2.5 py-1 text-[11px] font-mono tracking-wider uppercase text-white/90">
-                                            {localUser.role}
-                                        </span>
-                                        {talkingParticipant === localUser.name && (
-                                            <span className="flex items-center gap-1 rounded-full bg-green-500/20 border border-green-500/30 px-2 py-0.5 text-[10px] text-green-400 font-mono uppercase">
-                                                Speaking
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-sm font-medium text-white">{localUser.name}</p>
-                                        <div className="flex gap-1.5">
-                                            {/* Microphones state icon */}
-                                            <span className={`flex h-6 w-6 items-center justify-center rounded-full backdrop-blur-md border ${
-                                                micEnabled ? "bg-white/10 border-white/10 text-white" : "bg-red-500/20 border-red-500/30 text-red-400"
-                                            }`}>
-                                                {micEnabled ? (
-                                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                                                    </svg>
-                                                ) : (
-                                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .9-1.077 1.337-1.707.707L5.586 15z" />
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-                                                    </svg>
-                                                )}
-                                            </span>
-                                            {/* Camera state icon */}
-                                            <span className={`flex h-6 w-6 items-center justify-center rounded-full backdrop-blur-md border ${
-                                                cameraEnabled ? "bg-white/10 border-white/10 text-white" : "bg-red-500/20 border-red-500/30 text-red-400"
-                                            }`}>
-                                                {cameraEnabled ? (
-                                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                                    </svg>
-                                                ) : (
-                                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                                                    </svg>
-                                                )}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                        {/* End Call Button */}
+                        {remoteSocketId && (
+                            <button
+                                onClick={handleCallEnd}
+                                className="flex items-center gap-1 px-4 py-2 md:px-6 bg-gradient-to-r from-red-500 to-red-600 text-white font-semibold rounded-lg md:rounded-xl shadow-lg shadow-red-500/30 hover:shadow-red-500/40 transition-all duration-300 hover:scale-105 text-sm md:text-base"
+                            >
+                                <span className="text-sm md:text-lg">📞</span>
+                                <span className="hidden md:inline">End Call</span>
+                            </button>
+                        )}
 
-                            {/* Remote participants cards */}
-                            {remoteParticipants.map((participant) => {
-                                const isTalking = talkingParticipant === participant.name;
-                                return (
-                                    <div key={participant.name} className={`relative aspect-video rounded-xl border overflow-hidden transition-all duration-300 ${
-                                        isTalking 
-                                            ? "border-white ring-2 ring-white/10" 
-                                            : "border-white/10 hover:border-white/20"
-                                    }`}>
-                                        <div className="absolute inset-0 bg-canvas-soft">
-                                            <RemoteVideoFeed name={participant.name} isTalking={isTalking} />
-                                        </div>
-
-                                        {/* Remote participant overlay */}
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-between p-4.5 pointer-events-none">
-                                            <div className="flex items-center justify-between">
-                                                <span className="rounded-full bg-white/10 backdrop-blur-md px-2.5 py-1 text-[11px] font-mono tracking-wider uppercase text-white/90">
-                                                    {participant.role}
-                                                </span>
-                                                {isTalking && (
-                                                    <span className="flex items-center gap-1 rounded-full bg-green-500/20 border border-green-500/30 px-2 py-0.5 text-[10px] text-green-400 font-mono uppercase animate-pulse">
-                                                        Speaking
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div className="flex items-center justify-between flex-wrap gap-2">
-                                                <p className="text-sm font-medium text-white">{participant.name}</p>
-                                                <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] text-body-mid font-mono uppercase bg-black/30">
-                                                    {participant.recordingState}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
+                        {/* Back Button */}
+                        {!remoteSocketId && (
+                            <button
+                                onClick={handleCallEnd}
+                                className="flex items-center gap-1 px-4 py-2 md:px-6 bg-white/10 border border-white/20 text-gray-300 font-semibold rounded-lg md:rounded-xl transition-all duration-300 hover:bg-white/20 text-sm md:text-base"
+                            >
+                                <span className="text-sm md:text-lg">←</span>
+                                <span className="hidden md:inline">Back to Home</span>
+                            </button>
+                        )}
                     </div>
-                </Card>
 
-                <div className="space-y-6">
-                    {/* Primary calling controls */}
-                    <Card className="p-6">
-                        <p className="font-mono text-[12px] uppercase tracking-[0.22em] text-body-mid">Controls</p>
-                        <div className="mt-4 flex flex-wrap gap-3">
-                            <button 
-                                onClick={() => setMicEnabled(!micEnabled)}
-                                className={`inline-flex items-center gap-2 justify-center rounded-full border px-4 py-2.5 text-sm font-medium transition-all duration-200 cursor-pointer ${
-                                    micEnabled 
-                                        ? "border-white bg-transparent text-white hover:bg-white hover:text-canvas" 
-                                        : "border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/25"
-                                }`}
-                            >
-                                {micEnabled ? (
-                                    <>
-                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                                        </svg>
-                                        Mute Mic
-                                    </>
-                                ) : (
-                                    <>
-                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .9-1.077 1.337-1.707.707L5.586 15z" />
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-                                        </svg>
-                                        Unmute Mic
-                                    </>
-                                )}
-                            </button>
-                            <button 
-                                onClick={() => setCameraEnabled(!cameraEnabled)}
-                                className={`inline-flex items-center gap-2 justify-center rounded-full border px-4 py-2.5 text-sm font-medium transition-all duration-200 cursor-pointer ${
-                                    cameraEnabled 
-                                        ? "border-white bg-transparent text-white hover:bg-white hover:text-canvas" 
-                                        : "border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/25"
-                                }`}
-                            >
-                                {cameraEnabled ? (
-                                    <>
-                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                        </svg>
-                                        Stop Camera
-                                    </>
-                                ) : (
-                                    <>
-                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                                        </svg>
-                                        Start Camera
-                                    </>
-                                )}
-                            </button>
-                            <button 
-                                onClick={handleEndSession}
-                                className="inline-flex items-center gap-2 justify-center rounded-full border border-red-500/50 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-400 transition-all duration-200 hover:bg-red-500/25 cursor-pointer"
-                            >
-                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 8l2 2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5z" />
-                                </svg>
-                                {isHost ? "End Session" : "Leave Room"}
-                            </button>
+                    {/* Connection Status Text */}
+                    {isConnected === true && (
+                        <div className="text-center mt-1">
+                            <p className="text-green-400 text-sm font-medium">
+                                🎉 Call connected successfully!
+                            </p>
                         </div>
-                    </Card>
+                    )}
 
-                    {/* Simulation controls panel */}
-                    <Card className="p-6">
-                        <div className="flex items-center gap-2">
-                            <span className="h-2 w-2 rounded-full bg-[#7c3aed] animate-pulse"></span>
-                            <p className="font-mono text-[12px] uppercase tracking-[0.22em] text-body-mid">Studio Simulator</p>
+                    {isConnected === false && (
+                        <div className="text-center mt-1">
+                            <p className="text-yellow-400 text-sm font-medium">
+                                🔄 Establishing connection... this may take a minute.
+                            </p>
                         </div>
-                        <p className="mt-2 text-xs text-body-mid leading-relaxed">
-                            Simulate active guest audio-visual streams to verify the layout adjustments dynamically across different participant volumes.
-                        </p>
-                        <div className="mt-4 flex flex-wrap gap-2.5">
-                            <button
-                                onClick={handleAddMockParticipant}
-                                className="inline-flex items-center gap-1.5 justify-center rounded-full border border-white/20 bg-white/5 px-4.5 py-2 text-xs font-mono text-white transition-all hover:bg-white/10 cursor-pointer"
-                            >
-                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                                </svg>
-                                Add Guest
-                            </button>
-                            <button
-                                onClick={handleRemoveMockParticipant}
-                                disabled={remoteParticipants.length === 0}
-                                className="inline-flex items-center gap-1.5 justify-center rounded-full border border-white/10 bg-white/5 px-4.5 py-2 text-xs font-mono text-white transition-all hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-                            >
-                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 7a4 4 0 11-8 0 4 4 0 018 0zM9 20a6 6 0 00-6-6H3a6 6 0 006 6v1h1v-1z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 12H15" />
-                                </svg>
-                                Remove Guest
-                            </button>
-                        </div>
-                    </Card>
-
-                    {/* Session details */}
-                    <Card className="p-6">
-                        <p className="font-mono text-[12px] uppercase tracking-[0.22em] text-body-mid">Live Session Details</p>
-                        <div className="mt-4 space-y-3.5 text-sm text-body-mid font-mono">
-                            <div className="flex justify-between border-b border-white/5 pb-2">
-                                <span>Room ID</span>
-                                <span className="text-white">{room.podcastId}</span>
-                            </div>
-                            <div className="flex justify-between border-b border-white/5 pb-2">
-                                <span>Host Name</span>
-                                <span className="text-white">{room.creatorName}</span>
-                            </div>
-                            <div className="flex justify-between border-b border-white/5 pb-2">
-                                <span>Joined As</span>
-                                <span className="text-white">{localUser.name}</span>
-                            </div>
-                            <div className="flex flex-col gap-1.5 pt-1">
-                                <span>Share Link</span>
-                                <span className="text-white text-xs select-all bg-canvas-soft px-3 py-2 rounded-lg border border-white/5 break-all">
-                                    {window.location.origin + room.inviteLink}
-                                </span>
-                            </div>
-                        </div>
-                    </Card>
-
-                    {/* Help details */}
-                    <Card className="p-6">
-                        <p className="font-mono text-[12px] uppercase tracking-[0.22em] text-body-mid">Recording State</p>
-                        <div className="mt-4 space-y-3 text-xs leading-5 text-body-mid">
-                            <p>• <span className="text-white font-medium">Recording:</span> capturing audio-video feed locally in the browser.</p>
-                            <p>• <span className="text-white font-medium">Uploading:</span> syncing chunks to storage buffer dynamically.</p>
-                            <p>• <span className="text-white font-medium">Processing:</span> multi-track synchronization starting on host signal.</p>
-                        </div>
-                    </Card>
+                    )}
                 </div>
             </div>
-        </PageShell>
-    );
+        </div>
+    )
 }
 
-export default LiveRoom;
+export default LiveRoom
