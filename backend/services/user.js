@@ -1,8 +1,8 @@
-import User from "../models/user.model.js"
+import User from "../models/user.model.js";
 
 class UserService {
-    getUserById(identifier) {
-        
+    static async getUserById(id) {
+        return await User.findById(id);
     }
 }
 
