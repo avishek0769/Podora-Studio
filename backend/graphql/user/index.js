@@ -1,5 +1,5 @@
-import { typedefs } from "./typedefs.ts"
-import { queries } from "./queries.ts"
-import { resolvers } from "./resolvers.ts";
+import { typedefs } from "./typedefs.js"
+import { queries } from "./queries.js"
+import { resolvers } from "./resolvers.js";
 
-export const Podcast = { typedefs, queries, resolvers };
+export const User = { typedefs, queries, resolvers };

@@ -1,6 +1,6 @@
-import { typedefs } from "./typedefs.ts"
-import { queries } from "./queries.ts"
-import { mutations } from "./mutations.ts"
-import { resolvers } from "./resolvers.ts";
+import { typedefs } from "./typedefs.js"
+import { queries } from "./queries.js"
+import { mutations } from "./mutations.js"
+import { resolvers } from "./resolvers.js";
 
-export const Podcast = { typedefs, queries, mutations, resolvers };
+export const Recording = { typedefs, queries, mutations, resolvers };
