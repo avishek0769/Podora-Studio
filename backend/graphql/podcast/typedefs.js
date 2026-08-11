@@ -10,7 +10,13 @@ export const typedefs = `#graphql
         isLive: Boolean
     }
 
+    type TimelineEvent {
+        participantName: String!
+        action: String!
+        timestamp: String!
+    }
+
     type Timeline {
-        
+        events: [TimelineEvent]
     }
 `;
