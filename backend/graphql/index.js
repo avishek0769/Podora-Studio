@@ -1,7 +1,7 @@
 import { ApolloServer } from "@apollo/server";
-import { User } from "./user/index.ts"
-import { Podcast } from "./podcast/index.ts"
-import { Recording } from "./recording/index.ts"
+import { User } from "./user/index.js"
+import { Podcast } from "./podcast/index.js"
+import { Recording } from "./recording/index.js"
 
 async function createGraphqlServer() {
     const gqlServer = new ApolloServer({
