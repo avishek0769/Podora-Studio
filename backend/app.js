@@ -10,7 +10,13 @@ import socketConnection from "./socketio.js";
 
 const app = express();
 const server = http.createServer(app);
-const io = Server(server);
+const io = new Server(server, {
+    cors: {
+        origin: process.env.CORS_ORIGIN,
+        methods: process.env.CORS_METHODS,
+        credentials: true
+    }
+});
 
 app.use(
     cors({
