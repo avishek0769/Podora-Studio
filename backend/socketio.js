@@ -1,3 +1,5 @@
+import mediasoup from "mediasoup";
+
 let worker;
 let rooms = {};
 let peers = {};
