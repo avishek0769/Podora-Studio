@@ -10,24 +10,20 @@ const recordingSchema = new Schema({
         default: Date.now
     },
     leftAt: {
-        type: Date,
-        default: Date.now
+        type: Date
     },
     videoFileLink: {
-        type: Date,
-        default: Date.now
+        type: String
     },
     audioFileLink: {
-        type: Date,
-        default: Date.now
+        type: String
     },
     thumbnail: {
-        type: Date,
-        default: Date.now
+        type: String
     },
     podcastId: {
         type: mongoose.Schema.ObjectId,
-        ref: "podcasts",
+        ref: "Podcast",
         required: true
     },
     status: {
@@ -37,6 +33,6 @@ const recordingSchema = new Schema({
     }
 });
 
-const RecordingSession = model("User", recordingSchema);
+const RecordingSession = model("RecordingSession", recordingSchema);
 
 export default RecordingSession;

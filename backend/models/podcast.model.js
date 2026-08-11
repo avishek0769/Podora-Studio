@@ -13,12 +13,12 @@ const podcastSchema = new Schema({
     },
     hostId: {
         type: mongoose.Schema.ObjectId,
-        ref: "podcasts",
+        ref: "User",
         required: true
     },
     recordings: [{
         type: mongoose.Schema.ObjectId,
-        ref: "recordingSessions"
+        ref: "RecordingSession"
     }],
     isLive: {
         type: Boolean,
@@ -26,6 +26,6 @@ const podcastSchema = new Schema({
     }
 });
 
-const Podcast = model("User", podcastSchema);
+const Podcast = model("Podcast", podcastSchema);
 
 export default Podcast;

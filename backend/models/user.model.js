@@ -15,7 +15,7 @@ const userSchema = new Schema({
     },
     podcasts: [{
         type: mongoose.Schema.ObjectId,
-        ref: "podcasts"
+        ref: "Podcast"
     }]
 });
 
