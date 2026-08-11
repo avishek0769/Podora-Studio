@@ -1,16 +1,17 @@
 import PodcastService from "../../services/podcast.js";
 
+// Nested field resolvers for the User type
 const nested = {
-    Podcast: async (recording) => {
-        return await PodcastService.getPodcast(recording.podcastId);
-    }
-}
+    podcasts: async (user) => {
+        return await PodcastService.getPodcasts(user._id);
+    },
+};
 
 const queries = {
-    getCurrentUser: async (_, payload, context) => {
-        if(!context.user) throw new Error("Not authenticated");
+    getCurrentUser: async (_, _payload, context) => {
+        if (!context.user) throw new Error("Not authenticated");
         return context.user;
-    }
+    },
 };
 
 export const resolvers = { queries, nested };

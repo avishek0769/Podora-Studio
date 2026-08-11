@@ -22,6 +22,9 @@ async function createGraphqlServer() {
             }
         `,
         resolvers: {
+            User: {
+                ...User.resolvers.nested,
+            },
             Podcast: {
                 ...Podcast.resolvers.nested,
             },

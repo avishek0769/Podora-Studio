@@ -1,4 +1,4 @@
 export const mutations = `#graphql
-    createRecording(name: String!): Recording
-    editRecording(_id: String!, status: String, guestName: String): Recording
+    createRecording(guestName: String!, podcastId: String!): Recording
+    editRecording(_id: String!, status: String, guestName: String, leftAt: String, videoFileLink: String, audioFileLink: String, thumbnail: String): Recording
 `
