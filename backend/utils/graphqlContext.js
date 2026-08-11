@@ -1,5 +1,5 @@
 import { clerkClient } from "@clerk/express";
-import User from "../models/user.model";
+import User from "../models/user.model.js";
 
 const graphqlContext = async (req, res, next) => {
     try {
@@ -31,7 +31,7 @@ const graphqlContext = async (req, res, next) => {
 
         return { user }
     } catch (error) {
-        throw new Error("Clerk auth error: -> " + err.message)
+        throw new Error("Clerk auth error: -> " + error.message)
         return { user: null }
     }
 };
