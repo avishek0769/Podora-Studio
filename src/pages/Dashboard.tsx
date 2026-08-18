@@ -5,9 +5,9 @@ import { podcasts } from "../lib/podora-data";
 function Dashboard() {
     return (
         <PageShell
-            eyebrow="Dashboard"
-            title="Created podcasts in one place."
-            description="Track each podcast by status, recording window, and participant recording count. Create a new podcast when you are ready to start another room."
+            eyebrow="Console"
+            title="Podcasts"
+            description="Manage your remote recordings, invite participants, and access processed audio/video feeds."
             actions={
                 <>
                     <PrimaryButton href="/dashboard/create">Create Podcast</PrimaryButton>
@@ -16,38 +16,48 @@ function Dashboard() {
             }
         >
             <Card className="overflow-hidden">
-                <div className="grid gap-4 border-b border-hairline px-5 py-4 text-[12px] uppercase tracking-[0.22em] text-body-mid sm:grid-cols-[1.3fr_0.7fr_0.9fr_0.9fr_0.7fr_0.7fr] sm:px-6">
-                    <span>Name</span>
-                    <span>Status</span>
-                    <span>Start time</span>
-                    <span>End time</span>
-                    <span>Recordings</span>
-                    <span>Actions</span>
-                </div>
-
-                <div className="divide-y divide-hairline">
-                    {podcasts.map((podcast) => (
-                        <div key={podcast.id} className="grid gap-4 px-5 py-5 sm:grid-cols-[1.3fr_0.7fr_0.9fr_0.9fr_0.7fr_0.7fr] sm:px-6">
-                            <div>
-                                <p className="font-display text-[20px] tracking-[-0.04em] text-white">{podcast.name}</p>
-                                <p className="mt-2 text-sm text-body-mid">{podcast.id}</p>
-                            </div>
-                            <div className="flex items-start sm:items-center">
-                                <StatusPill status={podcast.status} />
-                            </div>
-                            <p className="text-sm text-body-mid">{podcast.startTime ?? "Waiting"}</p>
-                            <p className="text-sm text-body-mid">{podcast.endTime ?? "In progress"}</p>
-                            <p className="text-sm text-white">{podcast.recordingCount}</p>
-                            <div className="flex flex-wrap gap-2">
-                                <Link
-                                    to={`/dashboard/podcasts/${podcast.id}`}
-                                    className="inline-flex items-center justify-center rounded-full border border-white/25 px-3 py-1.5 text-xs text-white transition-colors hover:border-white/45 hover:bg-white/5"
-                                >
-                                    Details
-                                </Link>
-                            </div>
+                <div className="overflow-x-auto">
+                    <div className="min-w-[800px]">
+                        {/* Table Header */}
+                        <div className="grid grid-cols-[1.6fr_1fr_1.2fr_1.2fr_0.8fr_0.8fr] gap-4 border-b border-hairline/80 px-6 py-4 text-[10px] font-bold uppercase tracking-[0.15em] text-body-mid">
+                            <span>Podcast Name</span>
+                            <span>Status</span>
+                            <span>Start Time</span>
+                            <span>End Time</span>
+                            <span>Recordings</span>
+                            <span className="text-right">Actions</span>
                         </div>
-                    ))}
+
+                        {/* Table Body */}
+                        <div className="divide-y divide-hairline/60">
+                            {podcasts.map((podcast) => (
+                                <div key={podcast.id} className="grid grid-cols-[1.6fr_1fr_1.2fr_1.2fr_0.8fr_0.8fr] gap-4 items-center px-6 py-5 hover:bg-white/[0.01] transition-colors">
+                                    <div>
+                                        <p className="font-display text-[15px] font-semibold text-white tracking-tight">{podcast.name}</p>
+                                        <p className="mt-1 text-[11px] font-mono text-zinc-500">{podcast.id}</p>
+                                    </div>
+                                    <div className="flex items-center">
+                                        <StatusPill status={podcast.status} />
+                                    </div>
+                                    <p className="text-xs text-body-mid font-mono">{podcast.startTime ?? "Waiting"}</p>
+                                    <p className="text-xs text-body-mid font-mono">{podcast.endTime ?? "—"}</p>
+                                    <div>
+                                        <span className="inline-flex items-center justify-center rounded-md bg-zinc-900 border border-zinc-800 px-2 py-0.5 text-xs text-white font-mono font-medium">
+                                            {podcast.recordingCount}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-end">
+                                        <Link
+                                            to={`/dashboard/podcasts/${podcast.id}`}
+                                            className="inline-flex items-center justify-center rounded-lg border border-hairline bg-transparent px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/5 hover:border-white/20 transition-all"
+                                        >
+                                            View details
+                                        </Link>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 </div>
             </Card>
         </PageShell>
