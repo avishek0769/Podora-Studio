@@ -1,183 +1,192 @@
-import { useContext, useEffect, useRef, useState, useCallback } from 'react'
-import ReactPlayer from "react-player"
-import { useNavigate, useParams } from 'react-router-dom'
-import { SocketContext } from '../context/SocketProvider.tsx'
-import * as mediasoupClient from "mediasoup-client"
+import { useContext, useEffect, useRef, useState, useCallback } from 'react';
+import ReactPlayer from "react-player";
+import { useNavigate, useParams } from 'react-router-dom';
+import { SocketContext } from '../context/SocketProvider.tsx';
+import * as mediasoupClient from "mediasoup-client";
+import { podcasts } from "../lib/podora-data";
 
 function LiveRoom() {
-    const [myStream, setMyStream] = useState()
-    const [isConnected, setIsConnected] = useState(null)
-    const [remoteStream, setRemoteStream] = useState([])
-    const [remoteSocketId, setRemoteSocketId] = useState(null)
-    const [showUserLeftPopup, setShowUserLeftPopup] = useState(false)
-    const [device, setDevice] = useState()
-    const [rtpCapabilities, setRtpCapabilities] = useState()
-    const [producerTransport, setProducerTransport] = useState()
-    const [audioTransporter, setAudioTransporter] = useState()
-    const [videoTransporter, setVideoTransporter] = useState()
-    const [removeStream, setRemoveStream] = useState(false)
-    const [remoteAudioEnabled, setRemoteAudioEnabled] = useState(true)
-    const pendingVideoTracksRef = useRef({})
-    const pendingAudioTracksRef = useRef({})
-    const consumedProducerIdsRef = useRef(new Set()) // prevents duplicate consumers
-    const socket = useContext(SocketContext)
-    const navigate = useNavigate()
-    const producerTransRef = useRef(false)
-    const isSendTransportConnectedRef = useRef(false)
-    const roomJoinedRef = useRef(false)
-    const producersGot = useRef(false)
-    const deviceRef = useRef(null)
-    const consumerTransportRef = useRef([])
-    const producerTransportRef = useRef([])
-    // const params = {
-    //     encodings: [
-    //         {
-    //             rid: 'r0',
-    //             maxBitrate: 100000,
-    //         },
-    //         {
-    //             rid: 'r1',
-    //             maxBitrate: 300000,
-    //         },
-    //         {
-    //             rid: 'r2',
-    //             maxBitrate: 900000,
-    //         },
-    //     ],
-    //     codecOptions: {
-    //         videoGoogleStartBitrate: 1000
-    //     }
-    // }
-    const { roomId } = useParams()
+    const [myStream, setMyStream] = useState();
+    const [isConnected, setIsConnected] = useState(null);
+    const [remoteStream, setRemoteStream] = useState([]);
+    const [remoteSocketId, setRemoteSocketId] = useState(null);
+    const [showUserLeftPopup, setShowUserLeftPopup] = useState(false);
+    const [device, setDevice] = useState();
+    const [rtpCapabilities, setRtpCapabilities] = useState();
+    const [producerTransport, setProducerTransport] = useState();
+    const [audioTransporter, setAudioTransporter] = useState();
+    const [videoTransporter, setVideoTransporter] = useState();
+    const [removeStream, setRemoveStream] = useState(false);
+    const [remoteAudioEnabled, setRemoteAudioEnabled] = useState(true);
+    
+    // Local device controls state
+    const [localMicEnabled, setLocalMicEnabled] = useState(true);
+    const [localVideoEnabled, setLocalVideoEnabled] = useState(true);
+    const [copied, setCopied] = useState(false);
+
+    const pendingVideoTracksRef = useRef({});
+    const pendingAudioTracksRef = useRef({});
+    const consumedProducerIdsRef = useRef(new Set()); // prevents duplicate consumers
+    const socket = useContext(SocketContext);
+    const navigate = useNavigate();
+    const producerTransRef = useRef(false);
+    const isSendTransportConnectedRef = useRef(false);
+    const roomJoinedRef = useRef(false);
+    const producersGot = useRef(false);
+    const deviceRef = useRef(null);
+    const consumerTransportRef = useRef([]);
+    const producerTransportRef = useRef([]);
+
+    const { podcastId } = useParams();
+    const podcast = podcasts.find((p) => p.id === podcastId);
+    const podcastName = podcast ? podcast.name : "Live Session";
+    const inviteUrl = `${window.location.origin}/join/live/${podcastId}`;
+
+    const handleCopyLink = () => {
+        navigator.clipboard.writeText(inviteUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    const toggleLocalMic = () => {
+        if (myStream) {
+            const audioTrack = myStream.getAudioTracks()[0];
+            if (audioTrack) {
+                audioTrack.enabled = !audioTrack.enabled;
+                setLocalMicEnabled(audioTrack.enabled);
+            }
+        }
+    };
+
+    const toggleLocalVideo = () => {
+        if (myStream) {
+            const videoTrack = myStream.getVideoTracks()[0];
+            if (videoTrack) {
+                videoTrack.enabled = !videoTrack.enabled;
+                setLocalVideoEnabled(videoTrack.enabled);
+            }
+        }
+    };
 
     const handleUserJoined = useCallback(({ socketId }) => {
-        setRemoteSocketId(socketId)
-        // console.log(`User ${socketId} joined !`)
-        socket.emit("user-joined-confirm:server", { user2Id: socketId, socketId: socket.id })
-    }, [setRemoteSocketId])
+        setRemoteSocketId(socketId);
+        socket.emit("user-joined-confirm:server", { user2Id: socketId, socketId: socket.id });
+    }, [setRemoteSocketId, socket]);
 
     const handleUserJoinedConfirm = useCallback((socketId) => {
-        setRemoteSocketId(socketId)
-        console.log(`User ${socketId} was waiting !`)
-    }, [setRemoteSocketId])
+        setRemoteSocketId(socketId);
+        console.log(`User ${socketId} was waiting !`);
+    }, [setRemoteSocketId]);
 
     let i = 0;
     const getProducers = () => {
         socket.emit("getProducers", peer => {
-            console.log("Getting Producers ", ++i, peer)
-            const flatProducerIds = peer.flat()
-            signalNewRecvTransport(flatProducerIds)
-        })
-    }
+            console.log("Getting Producers ", ++i, peer);
+            const flatProducerIds = peer.flat();
+            signalNewRecvTransport(flatProducerIds);
+        });
+    };
 
     const handleProducerClose = ({ remoteProducerId }) => {
-        const consumerToClose = consumerTransportRef.current.find(transportData => transportData.remoteProducerId === remoteProducerId)
-        consumerTransportRef.current = consumerTransportRef.current.filter(transportData => transportData.remoteProducerId !== remoteProducerId)
+        const consumerToClose = consumerTransportRef.current.find(transportData => transportData.remoteProducerId === remoteProducerId);
+        consumerTransportRef.current = consumerTransportRef.current.filter(transportData => transportData.remoteProducerId !== remoteProducerId);
 
-        consumerToClose.transport.close()
-        consumerToClose.consumer.close()
+        consumerToClose.transport.close();
+        consumerToClose.consumer.close();
 
-        setRemoveStream(true)
-        setShowUserLeftPopup(true)
+        setRemoveStream(true);
+        setShowUserLeftPopup(true);
         setTimeout(() => {
-            setShowUserLeftPopup(false)
+            setShowUserLeftPopup(false);
         }, 2500);
-    }
+    };
 
     const handleNewProducer = ({ newProducers, i }) => {
-        console.log("New Producer", i, newProducers)
-        signalNewRecvTransport(newProducers)
-    }
+        console.log("New Producer", i, newProducers);
+        signalNewRecvTransport(newProducers);
+    };
 
     const handleCallEnd = () => {
         producerTransportRef.current.forEach(producerData => {
-            producerData.transport.close()
-            producerData.producer.close()
-        })
-        consumerTransportRef.current.forEach(consumerData => {
-            consumerData.transport.close()
-            consumerData.consumer.close()
-        })
-        
-        myStream.getTracks().forEach(track => {
-            track.stop();
+            producerData.transport.close();
+            producerData.producer.close();
         });
-        setMyStream(null)
-        navigate("/live");
+        consumerTransportRef.current.forEach(consumerData => {
+            consumerData.transport.close();
+            consumerData.consumer.close();
+        });
+        
+        if (myStream) {
+            myStream.getTracks().forEach(track => {
+                track.stop();
+            });
+        }
+        setMyStream(null);
+        navigate("/dashboard");
         setTimeout(() => window.location.reload(), 200);
-    }
+    };
 
-    // Step-1: Get RTP Capabilities from the router created in the server 
     const joinRoom = () => {
-        socket.emit("joinRoom", { roomId }, (data) => {
-            setRtpCapabilities(data.rtpCapabilities)
-        })
-    }
+        socket.emit("joinRoom", { roomId: podcastId }, (data) => {
+            setRtpCapabilities(data.rtpCapabilities);
+        });
+    };
 
-    // Step-2: Create a Device using the RTP Capabilities
     const createDevice = useCallback(async () => {
         try {
-            const newDevice = new mediasoupClient.Device()
-            await newDevice.load({ routerRtpCapabilities: rtpCapabilities })
-            deviceRef.current = newDevice
-            setDevice(newDevice)
-            return newDevice
+            const newDevice = new mediasoupClient.Device();
+            await newDevice.load({ routerRtpCapabilities: rtpCapabilities });
+            deviceRef.current = newDevice;
+            setDevice(newDevice);
+            return newDevice;
         }
         catch (error) {
-            console.log(error)
+            console.log(error);
             if (error.name === 'UnsupportedError') console.warn('browser not supported');
         }
-    }, [rtpCapabilities])
+    }, [rtpCapabilities]);
 
-    // Step-3: Create a Producer/Send Transport
     const createSendTransport = useCallback(() => {
-        console.log("Called createSendTransport")
-
         socket.emit("createWebRTCTransport", { consumer: false }, ({ params }) => {
-            // console.log(params)
-            const producerTransport = deviceRef.current.createSendTransport(params)
+            const producerTransport = deviceRef.current.createSendTransport(params);
 
             producerTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
-                console.log("DTLS Params on Producer Connect --> ", dtlsParameters)
                 try {
-                    await socket.emit("producerTransport-connect", { dtlsParameters })
-                    callback()
+                    await socket.emit("producerTransport-connect", { dtlsParameters });
+                    callback();
                 }
                 catch (error) {
-                    errback(error)
+                    errback(error);
                 }
-            })
+            });
 
             producerTransport.on("produce", (parameters, callback, errback) => {
-                console.log("Parameters on Producer Produce --> ", parameters)
                 try {
                     socket.emit("producerTransport-produce", {
                         kind: parameters.kind,
                         rtpParameters: parameters.rtpParameters,
                         appData: parameters.appData,
                     }, ({ id, producerExists }) => {
-                        callback({ id })
+                        callback({ id });
                         if (producerExists) {
-                            console.log("Producer Exists --> ", producerExists)
                             if(!producersGot.current){
-                                getProducers()
-                                producersGot.current = true
+                                getProducers();
+                                producersGot.current = true;
                             }
-                        };
-                    })
+                        }
+                    });
                 }
                 catch (error) {
-                    errback(error)
+                    errback(error);
                 }
-            })
-            setProducerTransport(producerTransport)
-        })
-    }, [device, producerTransport])
+            });
+            setProducerTransport(producerTransport);
+        });
+    }, [device]);
 
-    // Step-4: Create Producer and start sending your video track by connecting to the Producer Transport
     const connectSendTransport = useCallback(async () => {
-        let videoTrack = myStream.getVideoTracks()[0]
-        let audioTrack = myStream.getAudioTracks()[0]
+        let videoTrack = myStream.getVideoTracks()[0];
+        let audioTrack = myStream.getAudioTracks()[0];
         
         let newVideoProducer = await producerTransport.produce({ track: videoTrack });
         let newAudioProducer = await producerTransport.produce({ track: audioTrack });
@@ -191,65 +200,58 @@ function LiveRoom() {
                 transport: producerTransport,
                 producer: newAudioProducer,
             }
-        ]
+        ];
 
         newVideoProducer.on("trackend", () => {
-            console.log("Video Track ended")
-        })
+            console.log("Video Track ended");
+        });
         newVideoProducer.on("transportclose", () => {
-            console.log("Video Producer Transport closed")
-        })
+            console.log("Video Producer Transport closed");
+        });
         newAudioProducer.on("trackend", () => {
-            console.log("Audio Track ended")
-        })
+            console.log("Audio Track ended");
+        });
         newAudioProducer.on("transportclose", () => {
-            console.log("Audio Producer Transport closed")
-        })
+            console.log("Audio Producer Transport closed");
+        });
 
-        setVideoTransporter(newVideoProducer)
-        setAudioTransporter(newAudioProducer)
-    }, [producerTransport, myStream])
+        setVideoTransporter(newVideoProducer);
+        setAudioTransporter(newAudioProducer);
+    }, [producerTransport, myStream]);
 
-    // Step-3or: Create a Consumer/Receive Transport and immediately consume each producer
     const signalNewRecvTransport = useCallback((remoteProducerIds) => {
-        console.log("Called signalNewRecvTransport", remoteProducerIds)
-
         socket.emit("createWebRTCTransport", { consumer: true }, ({ params }) => {
             if (params.error) {
-                console.error(params.error)
-                return
+                console.error(params.error);
+                return;
             }
-            let consumerTransport = deviceRef.current.createRecvTransport(params)
+            let consumerTransport = deviceRef.current.createRecvTransport(params);
 
             consumerTransport.on("connect", ({ dtlsParameters }, callback, errback) => {
                 try {
                     socket.emit("consumerTransport-connect", {
                         dtlsParameters,
                         serverConsumerTransportId: params.id
-                    })
-                    callback()
+                    });
+                    callback();
                 }
                 catch (error) {
-                    errback(error)
+                    errback(error);
                 }
-            })
+            });
 
-            // Immediately consume each producer — no deferred state needed
             remoteProducerIds.forEach(remoteProducerId => {
-                connectRecvTransport(consumerTransport, remoteProducerId, params.id)
-            })
-        })
-    }, [device])
+                connectRecvTransport(consumerTransport, remoteProducerId, params.id);
+            });
+        });
+    }, [device]);
 
-    // Step-4or: Create a Consumer and start receiving the producer's video/audio feed
     const connectRecvTransport = useCallback((consumerTransport, remoteProducerId, serverConsumerTransportId) => {
-        // Guard against duplicate consumption (e.g. if new-producer fires twice)
         if (consumedProducerIdsRef.current.has(remoteProducerId)) {
-            console.log("Already consuming producer", remoteProducerId, "— skipping")
-            return
+            console.log("Already consuming producer", remoteProducerId, "— skipping");
+            return;
         }
-        consumedProducerIdsRef.current.add(remoteProducerId)
-        console.log("Called connectRecvTransport for", remoteProducerId)
+        consumedProducerIdsRef.current.add(remoteProducerId);
 
         socket.emit("consumerTransport-consume", {
             rtpCapabilities: deviceRef.current.rtpCapabilities,
@@ -258,11 +260,11 @@ function LiveRoom() {
         },
             async ({ params }) => {
                 if (params.error) {
-                    console.error(params.error)
-                    consumedProducerIdsRef.current.delete(remoteProducerId)
-                    return
+                    console.error(params.error);
+                    consumedProducerIdsRef.current.delete(remoteProducerId);
+                    return;
                 }
-                let consumer = await consumerTransport.consume(params)
+                let consumer = await consumerTransport.consume(params);
 
                 consumerTransportRef.current = [
                     ...consumerTransportRef.current,
@@ -272,335 +274,316 @@ function LiveRoom() {
                         consumer,
                         serverConsumerTransportId
                     }
-                ]
+                ];
 
                 const { track } = consumer;
-                console.log("Track", track)
 
-                socket.emit("consumer-resume", { consumerId: consumer.id })
+                socket.emit("consumer-resume", { consumerId: consumer.id });
 
-                // Accumulate tracks in refs and build MediaStream when both video+audio arrive
                 if (track.kind === "video") {
-                    pendingVideoTracksRef.current[remoteProducerId] = track
+                    pendingVideoTracksRef.current[remoteProducerId] = track;
                 } else {
-                    pendingAudioTracksRef.current[remoteProducerId] = track
+                    pendingAudioTracksRef.current[remoteProducerId] = track;
                 }
 
-                const videoKeys = Object.keys(pendingVideoTracksRef.current)
-                const audioKeys = Object.keys(pendingAudioTracksRef.current)
-                const minPaired = Math.min(videoKeys.length, audioKeys.length)
+                const videoKeys = Object.keys(pendingVideoTracksRef.current);
+                const audioKeys = Object.keys(pendingAudioTracksRef.current);
+                const minPaired = Math.min(videoKeys.length, audioKeys.length);
                 if (minPaired > 0) {
-                    const newStreams = []
+                    const newStreams = [];
                     for (let idx = 0; idx < minPaired; idx++) {
-                        const vTrack = pendingVideoTracksRef.current[videoKeys[idx]]
-                        const aTrack = pendingAudioTracksRef.current[audioKeys[idx]]
-                        newStreams.push(new MediaStream([vTrack, aTrack]))
-                        delete pendingVideoTracksRef.current[videoKeys[idx]]
-                        delete pendingAudioTracksRef.current[audioKeys[idx]]
+                        const vTrack = pendingVideoTracksRef.current[videoKeys[idx]];
+                        const aTrack = pendingAudioTracksRef.current[audioKeys[idx]];
+                        newStreams.push(new MediaStream([vTrack, aTrack]));
+                        delete pendingVideoTracksRef.current[videoKeys[idx]];
+                        delete pendingAudioTracksRef.current[audioKeys[idx]];
                     }
-                    setRemoteStream(prev => [...prev, ...newStreams])
+                    setRemoteStream(prev => [...prev, ...newStreams]);
                 }
-            })
-    }, [device])
-
-    // Track pairing is now handled inline in connectRecvTransport via refs (see above)
-    // This effect is intentionally removed to avoid the race condition where
-    // videoTracks and audioTracks state updates weren't synchronised
+            });
+    }, [device]);
 
     useEffect(() => {
         if (rtpCapabilities) {
-            createDevice()
+            createDevice();
         }
-    }, [rtpCapabilities])
+    }, [rtpCapabilities, createDevice]);
 
     useEffect(() => {
         if (device) {
             if (!producerTransRef.current) {
                 createSendTransport();
-                producerTransRef.current = true
+                producerTransRef.current = true;
             }
         }
-    }, [device])
+    }, [device, createSendTransport]);
 
     useEffect(() => {
         if (producerTransport && myStream && producerTransRef.current && !isSendTransportConnectedRef.current) {
-            connectSendTransport()
-            isSendTransportConnectedRef.current = true
+            connectSendTransport();
+            isSendTransportConnectedRef.current = true;
         }
-    }, [producerTransport, myStream])
-
-    // Consumer transport creation + consumption is now handled directly in signalNewRecvTransport.
-    // The old canConnectToRecvTransport + connectingConsumerTransportData effect has been removed
-    // because it re-ran on every state change, creating duplicate consumers.
+    }, [producerTransport, myStream, connectSendTransport]);
 
     useEffect(() => {
         if (!myStream && !roomJoinedRef.current) {
             navigator.mediaDevices.getUserMedia({ video: true, audio: true })
                 .then((stream) => {
-                    setMyStream(stream)
-                })
+                    setMyStream(stream);
+                });
         }
         if (myStream && !roomJoinedRef.current) {
-            joinRoom()
-            roomJoinedRef.current = true
+            joinRoom();
+            roomJoinedRef.current = true;
         }
-    }, [myStream])
+    }, [myStream]);
 
     useEffect(() => {
         if(removeStream && remoteStream) {
-            let filteredStream = remoteStream.filter(stream => stream.active)
-            setRemoteStream(filteredStream)
-            setRemoveStream(false)
+            let filteredStream = remoteStream.filter(stream => stream.active);
+            setRemoteStream(filteredStream);
+            setRemoveStream(false);
         }
-    }, [remoteStream, removeStream])
+    }, [remoteStream, removeStream]);
 
     useEffect(() => {
-        socket.on("user-joined", handleUserJoined)
-        socket.on("user-joined-confirm:client", handleUserJoinedConfirm)
-        socket.on("new-producer", handleNewProducer)
-        socket.on('producer-closed', handleProducerClose)
+        socket.on("user-joined", handleUserJoined);
+        socket.on("user-joined-confirm:client", handleUserJoinedConfirm);
+        socket.on("new-producer", handleNewProducer);
+        socket.on('producer-closed', handleProducerClose);
 
         return () => {
-            socket.off("user-joined", handleUserJoined)
-            socket.off("user-joined-confirm:client", handleUserJoinedConfirm)
-            socket.off("new-producer", handleNewProducer)
-            socket.off('producer-closed', handleProducerClose)
-        }
-    }, [socket, handleUserJoined, handleUserJoinedConfirm])
+            socket.off("user-joined", handleUserJoined);
+            socket.off("user-joined-confirm:client", handleUserJoinedConfirm);
+            socket.off("new-producer", handleNewProducer);
+            socket.off('producer-closed', handleProducerClose);
+        };
+    }, [socket, handleUserJoined, handleUserJoinedConfirm]);
 
-    // Helper function to determine grid layout based on participant count
     const getGridLayout = (participantCount) => {
-        if (participantCount <= 1) return "grid-cols-1"
-        if (participantCount === 2) return "grid-cols-2 md:grid-cols-2"
-        if (participantCount <= 4) return "grid-cols-2 md:grid-cols-2"
-        if (participantCount <= 6) return "grid-cols-2 md:grid-cols-2 lg:grid-cols-3"
-        return "grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-    }
+        if (participantCount <= 1) return "grid-cols-1 max-w-3xl mx-auto";
+        if (participantCount === 2) return "grid-cols-1 md:grid-cols-2 max-w-5xl mx-auto";
+        return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 max-w-7xl mx-auto";
+    };
 
-    // Calculate total participants (my stream + remote streams)
-    const totalParticipants = 1 + (remoteStream?.length || 0)
+    const totalParticipants = 1 + (remoteStream?.length || 0);
 
     return (
-        <div className="min-h-screen bg-gray-950 text-white font-sans">
+        <div className="h-screen w-screen bg-canvas text-white font-sans flex flex-col overflow-hidden">
             {/* User Left Popup */}
             {showUserLeftPopup && (
-                <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[100] animate-slide-down">
-                    <div className="bg-gradient-to-r from-gray-900/95 to-gray-800/95 border border-red-500/40 rounded-xl px-4 py-3 mx-4 backdrop-blur-lg shadow-2xl shadow-red-500/20 w-[280px] md:w-auto">
-                        <div className="flex items-center gap-3">
-                            <div className="text-2xl">👋</div>
-                            <div>
-                                <h3 className="text-sm font-semibold text-red-400">
-                                    User Left
-                                </h3>
-                                <p className="text-gray-300 text-xs">
-                                    Participant has left the call
-                                </p>
-                            </div>
-                            <button
-                                onClick={() => setShowUserLeftPopup(false)}
-                                className="ml-2 text-gray-400 hover:text-white transition-colors"
-                            >
-                                ✕
-                            </button>
-                        </div>
+                <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50">
+                    <div className="bg-zinc-900 border border-rose-500/30 rounded-xl px-5 py-3 flex items-center gap-3 shadow-2xl backdrop-blur-md">
+                        <span className="text-rose-400 text-sm font-semibold">User Left Room</span>
+                        <button onClick={() => setShowUserLeftPopup(false)} className="text-zinc-500 hover:text-white text-xs">✕</button>
                     </div>
                 </div>
             )}
 
-            {/* Header */}
-            <header className="px-6 py-4 border-b border-gray-700 bg-black/30 backdrop-blur-lg sticky top-0 z-50">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="text-2xl drop-shadow-lg">🔴</div>
-                        <h1 className="text-xl font-bold bg-gradient-to-r from-red-400 to-teal-400 bg-clip-text text-transparent">
-                            Live Video Call
-                        </h1>
+            {/* Top Bar Header */}
+            <header className="px-6 py-4 border-b border-hairline/60 bg-canvas-soft/80 backdrop-blur-md flex items-center justify-between z-10">
+                <div className="flex items-center gap-4">
+                    <Link to="/dashboard" className="h-8 w-8 rounded-lg border border-hairline flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition-colors">
+                        ←
+                    </Link>
+                    <div>
+                        <h1 className="text-sm font-bold tracking-tight text-white">{podcastName}</h1>
+                        <p className="text-[10px] font-mono text-zinc-500">Room: {podcastId}</p>
+                    </div>
+                </div>
+
+                {/* Invite & Status */}
+                <div className="flex items-center gap-4">
+                    <div className="hidden sm:flex items-center gap-2">
+                        <input
+                            type="text"
+                            readOnly
+                            value={inviteUrl}
+                            className="bg-zinc-950 border border-hairline px-3 py-1.5 rounded-lg text-xs font-mono text-zinc-400 w-52 select-all outline-none"
+                        />
+                        <button
+                            onClick={handleCopyLink}
+                            className="px-3 py-1.5 border border-hairline rounded-lg text-xs font-semibold uppercase tracking-wider bg-white/5 text-white hover:bg-white/10 transition-colors"
+                        >
+                            {copied ? "Copied" : "Copy Link"}
+                        </button>
                     </div>
 
-                    {/* Connection Status */}
-                    <div className="flex items-center gap-2">
-                        {isConnected === true ? (
-                            <>
-                                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                                <span className="text-green-400 text-sm font-medium">Connected</span>
-                            </>
-                        ) : isConnected === false ? (
-                            <>
-                                <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
-                                <span className="text-yellow-400 text-sm font-medium">Connecting...</span>
-                            </>
-                        ) : isConnected === undefined ? (
-                            <>
-                                <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse"></div>
-                                <span className="text-red-400 text-sm font-medium">Failed</span>
-                            </>
-                        ) : (
-                            <>
-                                <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-                                <span className="text-gray-400 text-sm font-medium">Waiting</span>
-                            </>
-                        )}
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800">
+                        <span className={`h-1.5 w-1.5 rounded-full ${
+                            isConnected === true ? "bg-emerald-400" :
+                            isConnected === false ? "bg-amber-400" : "bg-zinc-500"
+                        }`} />
+                        <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400">
+                            {isConnected === true ? "Live" : isConnected === false ? "Connecting" : "Waiting"}
+                        </span>
                     </div>
                 </div>
             </header>
 
-            {/* Video Container */}
-            <div className="flex-1 p-4 md:p-6 overflow-hidden">
-                <div className={`h-[calc(100vh-140px)] overflow-y-auto overflow-x-hidden grid gap-4 md:gap-6 auto-rows-min ${getGridLayout(totalParticipants)}`}>
-                    {/* My Video */}
-                    <div className="bg-gray-900/50 border border-gray-700 rounded-2xl overflow-hidden backdrop-blur-lg min-h-[200px] h-[250px] md:h-[300px]">
-                        <div className="h-full relative">
-                            {myStream ? (
+            {/* Video Canvas Area */}
+            <div className="flex-1 p-6 md:p-8 overflow-y-auto min-h-0 flex items-center justify-center">
+                <div className={`grid gap-6 w-full ${getGridLayout(totalParticipants)}`}>
+                    {/* Local Feed */}
+                    <div className="aspect-video bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden relative group shadow-xl">
+                        {myStream && localVideoEnabled ? (
+                            <ReactPlayer
+                                url={myStream}
+                                muted
+                                playing
+                                playsinline
+                                config={{ file: { attributes: { playsInline: true } } }}
+                                width="100%"
+                                height="100%"
+                                style={{ objectFit: 'cover' }}
+                            />
+                        ) : (
+                            <div className="h-full flex flex-col items-center justify-center bg-zinc-950/80">
+                                <div className="h-16 w-16 rounded-full bg-gradient-to-tr from-accent-sunset/20 to-accent-dusk/20 border border-accent-sunset/30 flex items-center justify-center text-white font-bold text-lg">
+                                    You
+                                </div>
+                                <p className="text-[11px] font-mono text-zinc-600 mt-3 uppercase tracking-wider">Camera Muted</p>
+                            </div>
+                        )}
+                        <div className="absolute bottom-4 left-4 bg-zinc-950/70 border border-hairline/80 backdrop-blur-md px-3 py-1 rounded-lg">
+                            <span className="text-xs font-semibold text-white">You</span>
+                        </div>
+                    </div>
+
+                    {/* Remote Feeds */}
+                    {remoteStream && remoteStream.length > 0 ? (
+                        remoteStream.map((stream, idx) => (
+                            <div key={idx} className="aspect-video bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden relative group shadow-xl">
                                 <ReactPlayer
-                                    url={myStream}
-                                    muted
+                                    url={stream}
                                     playing
+                                    muted={!remoteAudioEnabled}
                                     playsinline
                                     config={{ file: { attributes: { playsInline: true } } }}
+                                    onError={(e) => console.error("Remote player error", e)}
                                     width="100%"
                                     height="100%"
                                     style={{ objectFit: 'cover' }}
                                 />
-                            ) : (
-                                <div className="h-full flex items-center justify-center">
-                                    <div className="text-center">
-                                        <div className="text-4xl md:text-6xl mb-4 opacity-30">📹</div>
-                                        <p className="text-gray-400 text-sm">Loading camera...</p>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Video Label */}
-                            <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-sm px-3 py-1 rounded-lg">
-                                <span className="text-white text-sm font-medium">You</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Remote Video Streams */}
-                    {remoteStream && remoteStream.length > 0 ? (
-                        remoteStream.map((stream, index) => (
-                            <div key={index} className="bg-gray-900/50 border border-gray-700 rounded-2xl overflow-hidden backdrop-blur-lg min-h-[200px] h-[250px] md:h-[300px]">
-                                <div className="h-full relative">
-                                    <ReactPlayer
-                                        url={stream}
-                                        playing
-                                        muted={!remoteAudioEnabled}
-                                        playsinline
-                                        config={{ file: { attributes: { playsInline: true } } }}
-                                        onError={(e) => console.error("Remote player error", e)}
-                                        width="100%"
-                                        height="100%"
-                                        style={{ objectFit: 'cover' }}
-                                    />
-
-                                    {/* Video Label */}
-                                    <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-sm px-3 py-1 rounded-lg">
-                                        <span className="text-white text-sm font-medium">
-                                            Participant {index + 1}
-                                        </span>
-                                    </div>
+                                <div className="absolute bottom-4 left-4 bg-zinc-950/70 border border-hairline/80 backdrop-blur-md px-3 py-1 rounded-lg">
+                                    <span className="text-xs font-semibold text-white">Guest {idx + 1}</span>
                                 </div>
                             </div>
                         ))
                     ) : (
-                        // Placeholder when no remote streams
+                        // If participant exists but stream not paired/sent yet
                         remoteSocketId && (
-                            <div className="bg-gray-900/50 border border-gray-700 rounded-2xl overflow-hidden backdrop-blur-lg min-h-[200px] h-[250px] md:h-[300px]">
-                                <div className="h-full flex items-center justify-center">
-                                    <div className="text-center">
-                                        <div className="text-4xl md:text-6xl mb-4 opacity-30">👤</div>
-                                        <p className="text-gray-400 text-sm">Waiting for video...</p>
-                                    </div>
+                            <div className="aspect-video bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden relative flex flex-col items-center justify-center bg-zinc-950/80">
+                                <div className="h-16 w-16 rounded-full bg-zinc-900 border border-hairline flex items-center justify-center text-zinc-500 font-bold text-lg">
+                                    G
                                 </div>
+                                <p className="text-[11px] font-mono text-zinc-600 mt-3 uppercase tracking-wider">Connecting Video...</p>
                             </div>
                         )
                     )}
 
-                    {/* Waiting for participants placeholder */}
+                    {/* Waiting placeholder if completely alone */}
                     {!remoteSocketId && (
-                        <div className="bg-gray-900/50 border border-gray-700 rounded-2xl overflow-hidden backdrop-blur-lg min-h-[200px] h-[250px] md:h-[300px]">
-                            <div className="h-full flex items-center justify-center">
-                                <div className="text-center">
-                                    <div className="text-4xl md:text-6xl mb-4 opacity-30">👤</div>
-                                    <p className="text-gray-400 text-sm">Waiting for participant...</p>
-                                </div>
+                        <div className="aspect-video bg-zinc-900/10 border border-dashed border-hairline rounded-2xl overflow-hidden relative flex flex-col items-center justify-center">
+                            <div className="h-12 w-12 rounded-full border border-dashed border-hairline flex items-center justify-center text-zinc-600 text-lg">
+                                👤
                             </div>
+                            <p className="text-xs text-zinc-600 mt-3 font-semibold">Waiting for guest to join...</p>
+                            <p className="text-[10px] text-zinc-500 mt-1 font-mono">{inviteUrl}</p>
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* Control Panel */}
-            <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-gray-950 via-gray-950/95 to-transparent backdrop-blur-lg border-t border-gray-700">
-                <div className="px-4 py-2 md:px-6 md:py-3 flex justify-center items-center gap-4">
-                    {/* Status Message */}
-                    {isConnected === null && (
-                        <div className="text-center mb-2">
-                            <p className="text-gray-300 text-sm md:text-sm">
-                                {remoteSocketId
-                                    ? "✅ Participant joined! Ready to start call..."
-                                    : "⏳ Waiting for participant to join..."
-                                }
-                            </p>
-                        </div>
+            {/* Bottom Controls Panel */}
+            <div className="border-t border-hairline/60 bg-canvas-soft/90 backdrop-blur-md py-4 px-6 z-10 flex items-center justify-between">
+                {/* Audio Sync Status */}
+                <div className="text-xs text-zinc-500 font-mono hidden md:block">
+                    {isConnected === true ? "✓ WebRTC audio/video sync active" : "— Waiting for connection"}
+                </div>
+
+                {/* Main Controls */}
+                <div className="flex items-center gap-3 mx-auto md:mx-0">
+                    {/* Microphone Toggle */}
+                    <button
+                        onClick={toggleLocalMic}
+                        className={`p-3 rounded-xl border transition-colors cursor-pointer ${
+                            localMicEnabled
+                                ? "border-hairline bg-white/5 hover:bg-white/10 text-white"
+                                : "border-rose-500/30 bg-rose-500/10 text-rose-400"
+                        }`}
+                        title={localMicEnabled ? "Mute Mic" : "Unmute Mic"}
+                    >
+                        <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24">
+                            {localMicEnabled ? (
+                                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z" />
+                            ) : (
+                                <path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.79 1.79C13.43 15.89 12.74 16 12 16c-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z" />
+                            )}
+                        </svg>
+                    </button>
+
+                    {/* Camera Toggle */}
+                    <button
+                        onClick={toggleLocalVideo}
+                        className={`p-3 rounded-xl border transition-colors cursor-pointer ${
+                            localVideoEnabled
+                                ? "border-hairline bg-white/5 hover:bg-white/10 text-white"
+                                : "border-rose-500/30 bg-rose-500/10 text-rose-400"
+                        }`}
+                        title={localVideoEnabled ? "Stop Camera" : "Start Camera"}
+                    >
+                        <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24">
+                            {localVideoEnabled ? (
+                                <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" />
+                            ) : (
+                                <path d="M21 6.5l-4 4V7c0-.55-.45-1-1-1H9.82L21 17.18V6.5zM3.27 3L2 4.27 4.73 7H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-.73l3.27 3.27 1.27-1.27L3.27 3zM15 17H5V9.82L12.18 17H15z" />
+                            )}
+                        </svg>
+                    </button>
+
+                    {/* Remote Audio Toggle */}
+                    {remoteStream && remoteStream.length > 0 && (
+                        <button
+                            onClick={() => setRemoteAudioEnabled(prev => !prev)}
+                            className={`p-3 rounded-xl border transition-colors cursor-pointer ${
+                                remoteAudioEnabled
+                                    ? "border-hairline bg-white/5 hover:bg-white/10 text-white"
+                                    : "border-rose-500/30 bg-rose-500/10 text-rose-400"
+                            }`}
+                            title={remoteAudioEnabled ? "Mute Remote Streams" : "Unmute Remote Streams"}
+                        >
+                            <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24">
+                                {remoteAudioEnabled ? (
+                                    <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+                                ) : (
+                                    <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.21.05-.42.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z" />
+                                )}
+                            </svg>
+                        </button>
                     )}
 
-                    {/* Control Buttons */}
-                    <div className="flex items-center justify-center gap-2 md:gap-3">
-                        {remoteStream && remoteStream.length > 0 && (
-                            <button
-                                onClick={() => setRemoteAudioEnabled(prev => !prev)}
-                                className="flex items-center gap-1 px-4 py-2 md:px-6 bg-white/10 border border-white/20 text-gray-200 font-semibold rounded-lg md:rounded-xl transition-all duration-300 hover:bg-white/20 text-sm md:text-base"
-                            >
-                                <span className="text-sm md:text-lg">🔊</span>
-                                <span className="hidden md:inline">{remoteAudioEnabled ? "Mute Remote" : "Enable Audio"}</span>
-                            </button>
-                        )}
+                    {/* End Call / Leave Button */}
+                    <button
+                        onClick={handleCallEnd}
+                        className="px-5 py-3 rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 text-white text-xs font-semibold uppercase tracking-wider hover:opacity-95 transition-opacity shadow-lg shadow-rose-500/10 cursor-pointer flex items-center gap-2"
+                    >
+                        <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
+                        </svg>
+                        Leave
+                    </button>
+                </div>
 
-                        {/* End Call Button */}
-                        {remoteSocketId && (
-                            <button
-                                onClick={handleCallEnd}
-                                className="flex items-center gap-1 px-4 py-2 md:px-6 bg-gradient-to-r from-red-500 to-red-600 text-white font-semibold rounded-lg md:rounded-xl shadow-lg shadow-red-500/30 hover:shadow-red-500/40 transition-all duration-300 hover:scale-105 text-sm md:text-base"
-                            >
-                                <span className="text-sm md:text-lg">📞</span>
-                                <span className="hidden md:inline">End Call</span>
-                            </button>
-                        )}
-
-                        {/* Back Button */}
-                        {!remoteSocketId && (
-                            <button
-                                onClick={handleCallEnd}
-                                className="flex items-center gap-1 px-4 py-2 md:px-6 bg-white/10 border border-white/20 text-gray-300 font-semibold rounded-lg md:rounded-xl transition-all duration-300 hover:bg-white/20 text-sm md:text-base"
-                            >
-                                <span className="text-sm md:text-lg">←</span>
-                                <span className="hidden md:inline">Back to Home</span>
-                            </button>
-                        )}
-                    </div>
-
-                    {/* Connection Status Text */}
-                    {isConnected === true && (
-                        <div className="text-center mt-1">
-                            <p className="text-green-400 text-sm font-medium">
-                                🎉 Call connected successfully!
-                            </p>
-                        </div>
-                    )}
-
-                    {isConnected === false && (
-                        <div className="text-center mt-1">
-                            <p className="text-yellow-400 text-sm font-medium">
-                                🔄 Establishing connection... this may take a minute.
-                            </p>
-                        </div>
-                    )}
+                {/* Extra Actions / Status */}
+                <div className="hidden md:flex items-center gap-3">
+                    <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">
+                        {totalParticipants} {totalParticipants === 1 ? "Participant" : "Participants"}
+                    </span>
                 </div>
             </div>
         </div>
-    )
+    );
 }
 
-export default LiveRoom
+export default LiveRoom;
