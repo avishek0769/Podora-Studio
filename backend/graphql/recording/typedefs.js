@@ -11,8 +11,6 @@ export const typedefs = `#graphql
         guestName: String
         joinedAt: String
         leftAt: String
-        videoFileLink: String
-        audioFileLink: String
         thumbnail: String
         podcastId: String
         podcast: Podcast

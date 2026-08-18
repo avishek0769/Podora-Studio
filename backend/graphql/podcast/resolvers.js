@@ -21,6 +21,10 @@ const queries = {
         if (!context.user) throw new Error("Not authenticated");
         return await PodcastService.getPodcast(podcastId);
     },
+    getPublicPodcast: async (_, { podcastId }) => {
+        // No auth check — used by guests on the join page
+        return await PodcastService.getPodcast(podcastId);
+    },
     getSignedUrl: async (_, { podcastId }, context) => {
         if (!context.user) throw new Error("Not authenticated");
         return await PodcastService.getSignedUrl(podcastId);

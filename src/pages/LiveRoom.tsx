@@ -1,9 +1,10 @@
 import { useContext, useEffect, useRef, useState, useCallback } from 'react';
 import ReactPlayer from "react-player";
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
+import { useAuth } from '@clerk/react';
 import { SocketContext } from '../context/SocketProvider.tsx';
 import * as mediasoupClient from "mediasoup-client";
-import { podcasts } from "../lib/podora-data";
+import { gql, GET_PUBLIC_PODCAST, CREATE_RECORDING, EDIT_RECORDING, EDIT_PODCAST, GET_RECORDING_UPLOAD_URL } from '../lib/gql';
 
 const Player = ReactPlayer as any;
 
@@ -18,15 +19,19 @@ function LiveRoom() {
     const [producerTransport, setProducerTransport] = useState<any>();
     const [removeStream, setRemoveStream] = useState<boolean>(false);
     const [remoteAudioEnabled, setRemoteAudioEnabled] = useState<boolean>(true);
-    
-    // Local device controls state
     const [localMicEnabled, setLocalMicEnabled] = useState<boolean>(true);
     const [localVideoEnabled, setLocalVideoEnabled] = useState<boolean>(true);
     const [copied, setCopied] = useState<boolean>(false);
+    const [podcastName, setPodcastName] = useState<string>("Live Session");
+
+    // Recording state
+    const recordingIdRef = useRef<string | null>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const uploadIntervalRef = useRef<any>(null);
 
     const pendingVideoTracksRef = useRef<any>({});
     const pendingAudioTracksRef = useRef<any>({});
-    const consumedProducerIdsRef = useRef<any>(new Set()); // prevents duplicate consumers
+    const consumedProducerIdsRef = useRef<any>(new Set());
     const socket = useContext(SocketContext) as any;
     const navigate = useNavigate();
     const producerTransRef = useRef<boolean>(false);
@@ -38,9 +43,52 @@ function LiveRoom() {
     const producerTransportRef = useRef<any>([]);
 
     const { podcastId } = useParams();
-    const podcast = podcasts.find((p) => p.id === podcastId);
-    const podcastName = podcast ? podcast.name : "Live Session";
+    const location = useLocation();
+    const { getToken } = useAuth();
+    const guestName: string = (location.state as any)?.guestName || "Host";
     const inviteUrl = `${window.location.origin}/join/live/${podcastId}`;
+
+    // Fetch podcast name
+    useEffect(() => {
+        if (!podcastId) return;
+        gql<{ getPublicPodcast: { name: string } }>(GET_PUBLIC_PODCAST, { podcastId })
+            .then(d => setPodcastName(d.getPublicPodcast?.name || "Live Session"))
+            .catch(() => {});
+    }, [podcastId]);
+
+    // Start chunked recording upload
+    const startRecording = useCallback(async (stream: MediaStream, recId: string) => {
+        if (!podcastId || !recId) return;
+        const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus' });
+        mediaRecorderRef.current = recorder;
+
+        const uploadChunk = async (blob: Blob) => {
+            if (blob.size === 0) return;
+            try {
+                const timestamp = String(Date.now());
+                const data = await gql<{ getRecordingUploadUrl: string }>(
+                    GET_RECORDING_UPLOAD_URL,
+                    { podcastId, recordingId: recId, timestamp }
+                );
+                const url = data.getRecordingUploadUrl;
+                await fetch(url, { method: 'PUT', body: blob, headers: { 'Content-Type': 'video/webm' } });
+            } catch (e) { console.warn('[Recording] Chunk upload failed', e); }
+        };
+
+        recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) uploadChunk(e.data); };
+        recorder.start();
+        uploadIntervalRef.current = setInterval(() => {
+            if (recorder.state === 'recording') recorder.requestData();
+        }, 10000);
+    }, [podcastId]);
+
+    const stopRecording = useCallback(() => {
+        if (uploadIntervalRef.current) { clearInterval(uploadIntervalRef.current); uploadIntervalRef.current = null; }
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.requestData();
+            mediaRecorderRef.current.stop();
+        }
+    }, []);
 
     const handleCopyLink = () => {
         navigator.clipboard.writeText(inviteUrl);
@@ -112,25 +160,40 @@ function LiveRoom() {
         signalNewRecvTransport(newProducers);
     };
 
-    const handleCallEnd = () => {
-        producerTransportRef.current.forEach((producerData: any) => {
-            producerData.transport.close();
-            producerData.producer.close();
-        });
-        consumerTransportRef.current.forEach((consumerData: any) => {
-            consumerData.transport.close();
-            consumerData.consumer.close();
-        });
-        
-        if (myStream) {
-            myStream.getTracks().forEach((track: any) => {
-                track.stop();
-            });
-        }
+    const handleCallEnd = useCallback(async () => {
+        stopRecording();
+        // Close WebRTC transports
+        producerTransportRef.current.forEach((d: any) => { try { d.transport.close(); d.producer.close(); } catch {} });
+        consumerTransportRef.current.forEach((d: any) => { try { d.transport.close(); d.consumer.close(); } catch {} });
+        if (myStream) myStream.getTracks().forEach((t: any) => t.stop());
         setMyStream(null);
-        navigate("/dashboard");
+
+        // Finalize recording session
+        if (recordingIdRef.current) {
+            try {
+                await gql(EDIT_RECORDING, {
+                    _id: recordingIdRef.current,
+                    status: 'PROCESSING',
+                    leftAt: new Date().toISOString(),
+                });
+            } catch (e) { console.warn('[Recording] Could not finalize session', e); }
+        }
+
+        // Host ends the podcast
+        if (podcastId && guestName === 'Host') {
+            try {
+                const token = await getToken();
+                await gql(EDIT_PODCAST, {
+                    _id: podcastId,
+                    isLive: false,
+                    endTime: new Date().toISOString(),
+                }, token);
+            } catch (e) { console.warn('[Podcast] Could not end podcast', e); }
+        }
+
+        navigate('/dashboard');
         setTimeout(() => window.location.reload(), 200);
-    };
+    }, [myStream, podcastId, guestName, getToken, stopRecording]);
 
     const joinRoom = () => {
         if (socket) {
@@ -341,13 +404,23 @@ function LiveRoom() {
     useEffect(() => {
         if (!myStream && !roomJoinedRef.current) {
             navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-                .then((stream) => {
-                    setMyStream(stream);
-                });
+                .then((stream) => setMyStream(stream))
+                .catch((e) => console.error('[Media] getUserMedia failed', e));
         }
         if (myStream && !roomJoinedRef.current) {
             joinRoom();
             roomJoinedRef.current = true;
+            // Create recording session then start recorder
+            if (podcastId) {
+                gql<{ createRecording: { _id: string } }>(CREATE_RECORDING, {
+                    guestName,
+                    podcastId,
+                }).then(d => {
+                    const recId = d.createRecording._id;
+                    recordingIdRef.current = recId;
+                    startRecording(myStream, recId);
+                }).catch(e => console.warn('[Recording] Session create failed', e));
+            }
         }
     }, [myStream]);
 

@@ -12,12 +12,7 @@ const recordingSchema = new Schema({
     leftAt: {
         type: Date
     },
-    videoFileLink: {
-        type: String
-    },
-    audioFileLink: {
-        type: String
-    },
+
     thumbnail: {
         type: String
     },

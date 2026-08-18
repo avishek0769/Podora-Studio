@@ -2,6 +2,7 @@ import Podcast from "../models/podcast.model.js";
 import User from "../models/user.model.js";
 import RecordingSession from "../models/recording.model.js";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import ECSService from "./ecs.js";
 import { getSignedUrl as getS3SignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const s3Client = new S3Client({
@@ -50,7 +51,25 @@ class PodcastService {
             operations.$addToSet = { recordings: recordingId };
         }
 
-        return await Podcast.findByIdAndUpdate(id, operations, { new: true });
+        const updatedPodcast = await Podcast.findByIdAndUpdate(id, operations, { new: true });
+
+        if (isLive === false) {
+            try {
+                // Update all active recording sessions for this podcast to PROCESSING
+                await RecordingSession.updateMany(
+                    { podcastId: id, status: "UPLOADING" },
+                    { $set: { status: "PROCESSING" } }
+                );
+                console.log(`[PodcastService] Updated recording sessions for podcast ${id} to PROCESSING`);
+                
+                // Trigger the ECS merge task
+                await ECSService.triggerMergeTask(id);
+            } catch (err) {
+                console.error("[PodcastService] Error running post-recording tasks:", err);
+            }
+        }
+
+        return updatedPodcast;
     }
 
     static async deletePodcast(id) {

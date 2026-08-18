@@ -17,6 +17,9 @@ const queries = {
         if (!context.user) throw new Error("Not authenticated");
         return await RecordingService.getAudioFile(recordingId);
     },
+    getRecordingUploadUrl: async (_, { podcastId, recordingId, timestamp }) => {
+        return await RecordingService.getRecordingUploadUrl(podcastId, recordingId, timestamp);
+    },
 };
 
 const mutations = {
@@ -28,7 +31,7 @@ const mutations = {
         if (!podcast.isLive) throw new Error("Podcast is not live");
         return await RecordingService.createRecording(guestName, podcastId);
     },
-    editRecording: async (_, { _id, status, guestName, leftAt, videoFileLink, audioFileLink, thumbnail }) => {
+    editRecording: async (_, { _id, status, guestName, leftAt, thumbnail }) => {
         if (!_id) throw new Error("Recording ID is required");
         const recording = await RecordingService.getRecording(_id);
         if (!recording) throw new Error("Recording not found");
@@ -36,8 +39,6 @@ const mutations = {
             status,
             guestName,
             leftAt,
-            videoFileLink,
-            audioFileLink,
             thumbnail,
         });
     },

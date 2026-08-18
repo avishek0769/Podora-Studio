@@ -1,6 +1,6 @@
 import RecordingSession from "../models/recording.model.js";
 import Podcast from "../models/podcast.model.js";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl as getS3SignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const s3Client = new S3Client({
@@ -33,8 +33,6 @@ class RecordingService {
         if (updates.status !== undefined) cleanUpdates.status = updates.status;
         if (updates.guestName !== undefined) cleanUpdates.guestName = updates.guestName;
         if (updates.leftAt !== undefined) cleanUpdates.leftAt = updates.leftAt ? new Date(updates.leftAt) : null;
-        if (updates.videoFileLink !== undefined) cleanUpdates.videoFileLink = updates.videoFileLink;
-        if (updates.audioFileLink !== undefined) cleanUpdates.audioFileLink = updates.audioFileLink;
         if (updates.thumbnail !== undefined) cleanUpdates.thumbnail = updates.thumbnail;
 
         return await RecordingSession.findByIdAndUpdate(
@@ -54,15 +52,12 @@ class RecordingService {
 
     static async getVideoFile(recordingId) {
         const recording = await RecordingSession.findById(recordingId);
-        if (!recording || !recording.videoFileLink) return null;
+        if (!recording) return null;
 
-        if (recording.videoFileLink.startsWith("http://") || recording.videoFileLink.startsWith("https://")) {
-            return recording.videoFileLink;
-        }
-
+        const key = `p_${recording.podcastId}/r_${recording._id}/processed.mp4`;
         const command = new GetObjectCommand({
             Bucket: process.env.AWS_S3_BUCKET_NAME || "podora.studio",
-            Key: recording.videoFileLink,
+            Key: key,
         });
 
         return await getS3SignedUrl(s3Client, command, { expiresIn: 3600 });
@@ -70,15 +65,22 @@ class RecordingService {
 
     static async getAudioFile(recordingId) {
         const recording = await RecordingSession.findById(recordingId);
-        if (!recording || !recording.audioFileLink) return null;
+        if (!recording) return null;
 
-        if (recording.audioFileLink.startsWith("http://") || recording.audioFileLink.startsWith("https://")) {
-            return recording.audioFileLink;
-        }
-
+        const key = `p_${recording.podcastId}/r_${recording._id}/processed.mp3`;
         const command = new GetObjectCommand({
             Bucket: process.env.AWS_S3_BUCKET_NAME || "podora.studio",
-            Key: recording.audioFileLink,
+            Key: key,
+        });
+
+        return await getS3SignedUrl(s3Client, command, { expiresIn: 3600 });
+    }
+
+    static async getRecordingUploadUrl(podcastId, recordingId, timestamp) {
+        const key = `p_${podcastId}/r_${recordingId}/${timestamp}.webm`;
+        const command = new PutObjectCommand({
+            Bucket: process.env.AWS_S3_BUCKET_NAME || "podora.studio",
+            Key: key,
         });
 
         return await getS3SignedUrl(s3Client, command, { expiresIn: 3600 });

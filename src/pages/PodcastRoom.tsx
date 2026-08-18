@@ -1,33 +1,41 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Card, OutlineButton, PageShell, PrimaryButton, StatusPill } from "../components/podora-ui";
-import { currentRoom, podcasts } from "../lib/podora-data";
+import { gql, GET_PUBLIC_PODCAST } from "../lib/gql";
+
+interface PublicPodcast {
+    _id: string;
+    name: string;
+    isLive: boolean;
+    host: { fullname: string } | null;
+}
 
 function PodcastRoom() {
-    const { podcastId } = useParams();
-    const room = useMemo(() => {
-        if (podcastId === currentRoom.podcastId) {
-            return currentRoom;
-        }
-
-        const podcast = podcasts.find((item) => item.id === podcastId);
-        if (!podcast) {
-            return currentRoom;
-        }
-
-        return {
-            ...currentRoom,
-            podcastId: podcast.id,
-            podcastName: podcast.name,
-            roomStatus: podcast.status,
-        };
-    }, [podcastId]);
+    const { podcastId } = useParams<{ podcastId: string }>();
+    const [podcast, setPodcast] = useState<PublicPodcast | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     const [guestName, setGuestName] = useState("");
     const [copied, setCopied] = useState(false);
     const navigate = useNavigate();
 
-    const inviteUrl = `${window.location.origin}/join/live/${room.podcastId}`;
+    const inviteUrl = `${window.location.origin}/join/live/${podcastId}`;
+
+    useEffect(() => {
+        if (!podcastId) return;
+        (async () => {
+            try {
+                const data = await gql<{ getPublicPodcast: PublicPodcast }>(
+                    GET_PUBLIC_PODCAST,
+                    { podcastId }
+                    // No token — public query
+                );
+                setPodcast(data.getPublicPodcast);
+            } catch (err: any) {
+                setLoadError(err.message);
+            }
+        })();
+    }, [podcastId]);
 
     const handleCopyLink = () => {
         navigator.clipboard.writeText(inviteUrl);
@@ -35,18 +43,25 @@ function PodcastRoom() {
         setTimeout(() => setCopied(false), 2000);
     };
 
+    const podcastName = podcast?.name ?? "Loading…";
+    const creatorName = podcast?.host?.fullname ?? "Host";
+    const roomStatus = podcast ? (podcast.isLive ? "live" : "completed") : "completed";
+
     return (
         <PageShell
-            title={room.podcastName}
+            title={podcastName}
             description="Prepare to join the podcast session. Ensure your camera and microphone are connected before entering the live room."
             actions={
                 <>
-                    <StatusPill status={room.roomStatus} />
-                    <OutlineButton href={`/dashboard/podcasts/${room.podcastId}`}>View Details</OutlineButton>
+                    <StatusPill status={roomStatus} />
+                    <OutlineButton href={`/dashboard/podcasts/${podcastId}`}>View Details</OutlineButton>
                     <PrimaryButton href="/dashboard">Dashboard</PrimaryButton>
                 </>
             }
         >
+            {loadError && (
+                <p className="text-xs text-rose-400 font-mono text-center mb-6">{loadError}</p>
+            )}
             <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr] max-w-5xl mx-auto">
                 {/* Left: Info Card */}
                 <div className="space-y-6">
@@ -54,7 +69,7 @@ function PodcastRoom() {
                         <div className="flex items-center justify-between border-b border-hairline/60 pb-5">
                             <div>
                                 <p className="text-[11px] font-mono uppercase tracking-wider text-body-mid">Host Info</p>
-                                <h3 className="mt-1.5 text-lg font-bold text-white tracking-tight">Created by {room.creatorName}</h3>
+                                <h3 className="mt-1.5 text-lg font-bold text-white tracking-tight">Created by {creatorName}</h3>
                             </div>
                             <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
                         </div>
@@ -97,7 +112,7 @@ function PodcastRoom() {
                             onSubmit={(event) => {
                                 event.preventDefault();
                                 if (guestName.trim()) {
-                                    navigate(`/live/${room.podcastId}`, {
+                                    navigate(`/live/${podcastId}`, {
                                         state: { guestName: guestName.trim() },
                                     });
                                 }

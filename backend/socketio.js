@@ -151,7 +151,6 @@ const socketConnection = (socket) => {
     });
 
     socket.on("user-joined-confirm-record:server", ({ user2Id, socketId }) => {
-        // console.log("Connected sockets:", Array.from(io.sockets.sockets.keys()));
         setTimeout(() => {
             io.to(user2Id).emit("user-joined-confirm-record:client", socketId);
         }, 1000);
