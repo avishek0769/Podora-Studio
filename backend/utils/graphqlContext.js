@@ -1,7 +1,7 @@
 import { clerkClient } from "@clerk/express";
 import User from "../models/user.model.js";
 
-const graphqlContext = async (req, res, next) => {
+const graphqlContext = async (req, res) => {
     try {
         const clerkId = req.auth().userId;
 
@@ -24,14 +24,14 @@ const graphqlContext = async (req, res, next) => {
                     fullname,
                 });
             } catch (err) {
-                throw new Error("Failed to automatically sync Clerk user to DB: -> " + err.message)
+                throw new Error("Failed to sync Clerk user to DB: -> " + err.message)
                 return { user: null }
             }
         }
 
         return { user }
     } catch (error) {
-        throw new Error("Clerk auth error: -> " + error.message)
+        throw new Error(error.message)
         return { user: null }
     }
 };

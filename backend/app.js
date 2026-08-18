@@ -31,7 +31,9 @@ app.use(clerkMiddleware());
 app.use(
     "/graphql",
     expressMiddleware(await createGraphqlServer(), {
-        context: graphqlContext,
+        context: ({ req, res }) => {
+            return graphqlContext(req, res)
+        },
     }),
 );
 
