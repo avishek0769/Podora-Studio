@@ -8,7 +8,6 @@ function CreatePodcast() {
 
     return (
         <PageShell
-            eyebrow="Create Room"
             title="Create a new podcast."
             description="Give your session a name. Once created, you will get a shareable invite link and can enter the live media room immediately."
             actions={

@@ -56,13 +56,11 @@ export function AppHeader() {
 }
 
 export function PageShell({
-    eyebrow,
     title,
     description,
     actions,
     children,
 }: {
-    eyebrow: string;
     title: string;
     description: string;
     actions?: ReactNode;
@@ -71,12 +69,9 @@ export function PageShell({
     return (
         <div className="min-h-screen bg-canvas text-white selection:bg-white/10">
             <AppHeader />
-            <main className="mx-auto max-w-[1200px] px-6 py-10 sm:py-14 lg:px-8 lg:py-16">
+            <main className="mx-auto max-w-[1200px] px-6 pb-10 lg:px-8">
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between border-b border-hairline/50 pb-8 mb-10">
                     <div className="max-w-3xl">
-                        <div className="inline-block rounded-md bg-zinc-900 border border-zinc-800 px-2.5 py-1 text-[11px] font-mono uppercase tracking-[0.2em] text-body-mid">
-                            {eyebrow}
-                        </div>
                         <h1 className="mt-4 font-display text-[36px] font-extrabold tracking-tight text-white sm:text-[48px]">
                             {title}
                         </h1>
@@ -115,7 +110,7 @@ export function PrimaryButton({ children, href }: { children: ReactNode; href: s
     return (
         <Link
             to={href}
-            className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-canvas hover:bg-zinc-200 transition-colors shadow-lg shadow-white/5"
+            className="inline-flex items-center justify-center rounded-xl border border-hairline bg-transparent px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-canvas hover:bg-zinc-700 transition-colors shadow-lg shadow-white/5"
         >
             {children}
         </Link>

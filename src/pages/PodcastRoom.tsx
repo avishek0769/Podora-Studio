@@ -37,7 +37,6 @@ function PodcastRoom() {
 
     return (
         <PageShell
-            eyebrow="Lobby"
             title={room.podcastName}
             description="Prepare to join the podcast session. Ensure your camera and microphone are connected before entering the live room."
             actions={

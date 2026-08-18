@@ -49,7 +49,6 @@ function PodcastDetails() {
 
     return (
         <PageShell
-            eyebrow="Details"
             title={details.podcast.name}
             description="Access recording sessions, track real-time processing states, view invitation timelines, and export assets."
             actions={

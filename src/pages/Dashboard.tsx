@@ -5,7 +5,6 @@ import { podcasts } from "../lib/podora-data";
 function Dashboard() {
     return (
         <PageShell
-            eyebrow="Console"
             title="Podcasts"
             description="Manage your remote recordings, invite participants, and access processed audio/video feeds."
             actions={
