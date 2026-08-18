@@ -145,6 +145,7 @@ const getProducerTransport = (socketId) => {
 };
 
 const socketConnection = (socket) => {
+    console.log(socket.id)
     socket.on("join-user-record", ({ roomId }) => {
         io.to(roomId).emit("user-joined-record", { socketId: socket.id });
         socket.join(roomId);

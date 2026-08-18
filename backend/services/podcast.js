@@ -51,7 +51,7 @@ class PodcastService {
             operations.$addToSet = { recordings: recordingId };
         }
 
-        const updatedPodcast = await Podcast.findByIdAndUpdate(id, operations, { new: true });
+        const updatedPodcast = await Podcast.findByIdAndUpdate(id, operations, { returnDocument: "after" });
 
         if (isLive === false) {
             try {
@@ -61,7 +61,7 @@ class PodcastService {
                     { $set: { status: "PROCESSING" } }
                 );
                 console.log(`[PodcastService] Updated recording sessions for podcast ${id} to PROCESSING`);
-                
+
                 // Trigger the ECS merge task
                 await ECSService.triggerMergeTask(id);
             } catch (err) {

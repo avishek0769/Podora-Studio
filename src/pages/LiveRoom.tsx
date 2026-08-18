@@ -10,6 +10,7 @@ const Player = ReactPlayer as any;
 
 function LiveRoom() {
     const [myStream, setMyStream] = useState<any>(null);
+    const localVideoRef = useRef(null);
     const [isConnected, setIsConnected] = useState<boolean | null>(null);
     const [remoteStream, setRemoteStream] = useState<any[]>([]);
     const [remoteSocketId, setRemoteSocketId] = useState<string | null>(null);
@@ -63,6 +64,7 @@ function LiveRoom() {
         mediaRecorderRef.current = recorder;
 
         const uploadChunk = async (blob: Blob) => {
+            console.log("Blob --> ", blob)
             if (blob.size === 0) return;
             try {
                 const timestamp = String(Date.now());
@@ -75,7 +77,9 @@ function LiveRoom() {
             } catch (e) { console.warn('[Recording] Chunk upload failed', e); }
         };
 
-        recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) uploadChunk(e.data); };
+        recorder.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) uploadChunk(e.data);
+        };
         recorder.start();
         uploadIntervalRef.current = setInterval(() => {
             if (recorder.state === 'recording') recorder.requestData();
@@ -115,7 +119,7 @@ function LiveRoom() {
             }
         }
     };
-
+    console.log(socket)
     const handleUserJoined = useCallback(({ socketId }: { socketId: string }) => {
         setRemoteSocketId(socketId);
         if (socket) {
@@ -408,6 +412,9 @@ function LiveRoom() {
                 .catch((e) => console.error('[Media] getUserMedia failed', e));
         }
         if (myStream && !roomJoinedRef.current) {
+            if (localVideoRef.current && myStream) {
+                localVideoRef.current.srcObject = myStream;
+            }
             joinRoom();
             roomJoinedRef.current = true;
             // Create recording session then start recorder
@@ -516,14 +523,21 @@ function LiveRoom() {
                 {/* Local Feed */}
                 <div className="relative bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden shadow-xl">
                     {myStream && localVideoEnabled ? (
-                        <Player
-                            url={myStream}
+                        // <Player
+                        //     url={myStream}
+                        //     muted
+                        //     playing
+                        //     playsinline
+                        //     width="100%"
+                        //     height="100%"
+                        //     style={{ objectFit: 'cover', position: 'absolute', inset: 0 }}
+                        // />
+                        <video
+                            ref={localVideoRef}
+                            autoPlay
                             muted
-                            playing
-                            playsinline
-                            width="100%"
-                            height="100%"
-                            style={{ objectFit: 'cover', position: 'absolute', inset: 0 }}
+                            playsInline
+                            className="absolute inset-0 w-full h-full object-cover"
                         />
                     ) : (
                         <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/80">

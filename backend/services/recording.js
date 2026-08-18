@@ -38,7 +38,7 @@ class RecordingService {
         return await RecordingSession.findByIdAndUpdate(
             id,
             { $set: cleanUpdates },
-            { new: true }
+            { returnDocument: "after" }
         );
     }
 
