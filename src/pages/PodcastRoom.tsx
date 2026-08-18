@@ -24,13 +24,22 @@ function PodcastRoom() {
     }, [podcastId]);
 
     const [guestName, setGuestName] = useState("");
+    const [copied, setCopied] = useState(false);
     const navigate = useNavigate();
+
+    const inviteUrl = `${window.location.origin}/join/live/${room.podcastId}`;
+
+    const handleCopyLink = () => {
+        navigator.clipboard.writeText(inviteUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
 
     return (
         <PageShell
-            eyebrow="Podcast Room"
+            eyebrow="Lobby"
             title={room.podcastName}
-            description="This invite page shows the room state, creator, and shareable link. Guests only need to enter their name before joining the live call."
+            description="Prepare to join the podcast session. Ensure your camera and microphone are connected before entering the live room."
             actions={
                 <>
                     <StatusPill status={room.roomStatus} />
@@ -39,75 +48,84 @@ function PodcastRoom() {
                 </>
             }
         >
-            <div className="grid gap-6 lg:grid-cols-[1fr_0.82fr]">
-                <Card className="p-6 sm:p-8">
-                    <div className="flex flex-col gap-4 border-b border-hairline pb-5 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                            <p className="font-mono text-[12px] uppercase tracking-[0.22em] text-body-mid">Room status</p>
-                            <h2 className="mt-2 font-display text-[26px] tracking-[-0.04em] text-white">Live recording room</h2>
-                        </div>
-                        <StatusPill status={room.roomStatus} />
-                    </div>
-
-                    <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                        <div className="rounded-[8px] border border-hairline bg-canvas-soft p-4">
-                            <p className="font-mono text-[12px] uppercase tracking-[0.2em] text-body-mid">Creator</p>
-                            <p className="mt-3 text-[18px] text-white">{room.creatorName}</p>
-                        </div>
-                        <div className="rounded-[8px] border border-hairline bg-canvas-soft p-4">
-                            <p className="font-mono text-[12px] uppercase tracking-[0.2em] text-body-mid">Shareable invite link</p>
-                            <Link
-                                to={room.inviteLink}
-                                className="mt-3 block break-all text-[15px] text-white underline decoration-white/30 underline-offset-4 transition-colors hover:decoration-white"
-                            >
-                                {room.inviteLink}
-                            </Link>
-                        </div>
-                    </div>
-                </Card>
-
+            <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr] max-w-5xl mx-auto">
+                {/* Left: Info Card */}
                 <div className="space-y-6">
-                    <Card className="p-6">
-                        <p className="font-mono text-[12px] uppercase tracking-[0.22em] text-body-mid">Guest join</p>
-                        <h3 className="mt-3 font-display text-[24px] tracking-[-0.04em] text-white">Guests only need their name.</h3>
-                        <p className="mt-3 text-sm leading-6 text-body-mid">
-                            The invite link carries the room. This form represents the guest join step before the backend and WebRTC flow are connected.
+                    <Card className="p-6 sm:p-8">
+                        <div className="flex items-center justify-between border-b border-hairline/60 pb-5">
+                            <div>
+                                <p className="text-[11px] font-mono uppercase tracking-wider text-body-mid">Host Info</p>
+                                <h3 className="mt-1.5 text-lg font-bold text-white tracking-tight">Created by {room.creatorName}</h3>
+                            </div>
+                            <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                        </div>
+
+                        <div className="mt-6 space-y-5">
+                            <div>
+                                <label className="block text-xs uppercase tracking-wider text-body-mid font-semibold mb-2">
+                                    Shareable Invite Link
+                                </label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        readOnly
+                                        value={inviteUrl}
+                                        className="w-full rounded-xl border border-hairline bg-canvas/60 px-4 py-3 text-sm text-zinc-300 outline-none select-all font-mono"
+                                    />
+                                    <button
+                                        onClick={handleCopyLink}
+                                        className="px-4 rounded-xl border border-hairline bg-white/5 text-xs font-semibold uppercase tracking-wider text-white hover:bg-white/10 transition-colors"
+                                    >
+                                        {copied ? "Copied" : "Copy"}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </Card>
+                </div>
+
+                {/* Right: Guest Join Card */}
+                <div>
+                    <Card className="p-6 sm:p-8 border-accent-sunset/25">
+                        <p className="text-[11px] font-mono uppercase tracking-wider text-body-mid">Quick Access</p>
+                        <h3 className="mt-2 font-display text-xl font-bold tracking-tight text-white">Join as Guest</h3>
+                        <p className="mt-3 text-xs leading-relaxed text-body-mid">
+                            Enter your display name. No registration or credentials required to join this podcast call.
                         </p>
 
                         <form
-                            className="mt-5 space-y-4"
+                            className="mt-6 space-y-4"
                             onSubmit={(event) => {
                                 event.preventDefault();
-                                navigate(`/live/${room.podcastId}`, {
-                                    state: { guestName: guestName.trim() || "Guest" },
-                                });
+                                if (guestName.trim()) {
+                                    navigate(`/live/${room.podcastId}`, {
+                                        state: { guestName: guestName.trim() },
+                                    });
+                                }
                             }}
                         >
                             <div>
-                                <label className="block font-mono text-[12px] uppercase tracking-[0.22em] text-body-mid" htmlFor="guestName">
-                                    Guest name
+                                <label className="block text-xs uppercase tracking-wider text-body-mid font-semibold" htmlFor="guestName">
+                                    Display Name
                                 </label>
                                 <input
                                     id="guestName"
                                     value={guestName}
                                     onChange={(event) => setGuestName(event.target.value)}
-                                    placeholder="Ari Foster"
-                                    className="mt-3 w-full rounded-lg border border-hairline bg-canvas-soft px-4 py-3 text-[16px] text-white outline-none placeholder:text-body-mid focus:border-white/40"
+                                    placeholder="e.g. Ari Foster"
+                                    className="mt-3 w-full rounded-xl border border-hairline bg-canvas/60 px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-accent-sunset/50 transition-colors"
+                                    required
                                 />
                             </div>
 
                             <button
                                 type="submit"
-                                className="inline-flex items-center justify-center rounded-full border border-white bg-transparent px-5 py-2.5 text-sm text-white transition-colors hover:bg-white hover:text-canvas"
+                                className="w-full inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-accent-sunset to-accent-sunset/90 py-3.5 text-xs font-semibold uppercase tracking-wider text-white hover:opacity-95 transition-opacity cursor-pointer shadow-lg shadow-accent-sunset/10"
                             >
-                                Join room
+                                Join Live Room
                             </button>
                         </form>
                     </Card>
-
-                    <div className="flex flex-wrap gap-3">
-                        <OutlineButton href="/dashboard">Back to Dashboard</OutlineButton>
-                    </div>
                 </div>
             </div>
         </PageShell>
