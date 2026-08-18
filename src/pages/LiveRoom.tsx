@@ -13,6 +13,7 @@ function LiveRoom() {
     const localVideoRef = useRef(null);
     const [isConnected, setIsConnected] = useState<boolean | null>(null);
     const [remoteStream, setRemoteStream] = useState<any[]>([]);
+    const remoteVideoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
     const [remoteSocketId, setRemoteSocketId] = useState<string | null>(null);
     const [showUserLeftPopup, setShowUserLeftPopup] = useState<boolean>(false);
     const [device, setDevice] = useState<any>();
@@ -119,7 +120,7 @@ function LiveRoom() {
             }
         }
     };
-    console.log(socket)
+
     const handleUserJoined = useCallback(({ socketId }: { socketId: string }) => {
         setRemoteSocketId(socketId);
         if (socket) {
@@ -438,6 +439,16 @@ function LiveRoom() {
             setRemoveStream(false);
         }
     }, [remoteStream, removeStream]);
+    useEffect(() => {
+        remoteStream?.forEach((stream: MediaStream, idx: number) => {
+            const video = remoteVideoRefs.current[idx];
+
+            if (video && video.srcObject !== stream) {
+                video.srcObject = stream;
+                video.play().catch(console.error);
+            }
+        });
+    }, [remoteStream]);
 
     useEffect(() => {
         if (socket) {
@@ -523,15 +534,6 @@ function LiveRoom() {
                 {/* Local Feed */}
                 <div className="relative bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden shadow-xl">
                     {myStream && localVideoEnabled ? (
-                        // <Player
-                        //     url={myStream}
-                        //     muted
-                        //     playing
-                        //     playsinline
-                        //     width="100%"
-                        //     height="100%"
-                        //     style={{ objectFit: 'cover', position: 'absolute', inset: 0 }}
-                        // />
                         <video
                             ref={localVideoRef}
                             autoPlay
@@ -556,15 +558,13 @@ function LiveRoom() {
                 {remoteStream && remoteStream.length > 0 ? (
                     remoteStream.map((stream: any, idx: number) => (
                         <div key={idx} className="relative bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden shadow-xl">
-                            <Player
-                                url={stream}
-                                playing
-                                muted={!remoteAudioEnabled}
-                                playsinline
-                                onError={(e: any) => console.error("Remote player error", e)}
-                                width="100%"
-                                height="100%"
-                                style={{ objectFit: 'cover', position: 'absolute', inset: 0 }}
+                            <video
+                                ref={(el) => {
+                                    remoteVideoRefs.current[idx] = el;
+                                }}
+                                autoPlay
+                                playsInline
+                                className="absolute inset-0 w-full h-full object-cover"
                             />
                             <div className="absolute bottom-3 left-3 bg-zinc-950/70 border border-hairline/80 backdrop-blur-md px-3 py-1 rounded-lg pointer-events-none">
                                 <span className="text-xs font-semibold text-white">Guest {idx + 1}</span>
