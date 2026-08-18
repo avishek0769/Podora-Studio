@@ -177,30 +177,34 @@ function PodcastDetails() {
                                     <StatusPill status={session.recordingStatus} />
                                 </div>
 
-                                <div className="grid gap-3 sm:grid-cols-3 mb-4">
-                                    <div className="rounded-lg border border-hairline bg-canvas/30 p-2.5">
-                                        <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-semibold block mb-2">Thumbnail</span>
-                                        <div className="aspect-video rounded-md border border-white/5 bg-zinc-900/60 flex items-center justify-center">
-                                            <span className="text-[10px] font-mono text-zinc-500">{session.thumbnail}</span>
+                                <div className="flex gap-4 mb-4">
+                                    {/* Thumbnail — no label */}
+                                    <div className="w-36 flex-shrink-0 aspect-video rounded-lg border border-white/5 bg-zinc-900/60 flex items-center justify-center overflow-hidden">
+                                        <span className="text-[10px] font-mono text-zinc-500">{session.thumbnail}</span>
+                                    </div>
+
+                                    {/* Info labels + download buttons */}
+                                    <div className="flex flex-col justify-between flex-1 min-w-0">
+                                        <div className="space-y-2">
+                                            <div>
+                                                <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-semibold block">Processed Video</span>
+                                                <span className="text-xs font-mono text-white mt-0.5 block truncate">{session.processedVideo}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-semibold block">Processed Audio</span>
+                                                <span className="text-xs font-mono text-white mt-0.5 block truncate">{session.processedAudio}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-wrap gap-2 mt-3">
+                                            <button className="inline-flex items-center justify-center rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-canvas hover:bg-zinc-200 transition-colors cursor-pointer">
+                                                Download Video
+                                            </button>
+                                            <button className="inline-flex items-center justify-center rounded-lg border border-hairline px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/5 transition-colors cursor-pointer">
+                                                Download Audio
+                                            </button>
                                         </div>
                                     </div>
-                                    <div className="rounded-lg border border-hairline bg-canvas/30 p-2.5">
-                                        <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-semibold block mb-2">Processed Video</span>
-                                        <span className="text-xs font-mono font-medium text-white block mt-1">{session.processedVideo}</span>
-                                    </div>
-                                    <div className="rounded-lg border border-hairline bg-canvas/30 p-2.5">
-                                        <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-semibold block mb-2">Processed Audio</span>
-                                        <span className="text-xs font-mono font-medium text-white block mt-1">{session.processedAudio}</span>
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-wrap gap-2">
-                                    <button className="inline-flex items-center justify-center rounded-lg bg-white px-3 py-2 text-xs font-semibold text-canvas hover:bg-zinc-200 transition-colors cursor-pointer">
-                                        Download Video
-                                    </button>
-                                    <button className="inline-flex items-center justify-center rounded-lg border border-hairline px-3 py-2 text-xs font-semibold text-white hover:bg-white/5 transition-colors cursor-pointer">
-                                        Download Audio
-                                    </button>
                                 </div>
                             </div>
                         ))}

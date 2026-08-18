@@ -438,76 +438,66 @@ function LiveRoom() {
                 </div>
             </header>
 
-            {/* Video Canvas Area */}
-            <div className="flex-1 p-6 md:p-8 overflow-y-auto min-h-0 flex items-center justify-center">
-                <div className={`grid gap-6 w-full ${getGridLayout(totalParticipants)}`}>
-                    {/* Local Feed */}
-                    <div className="aspect-video bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden relative group shadow-xl">
-                        {myStream && localVideoEnabled ? (
+            {/* Video Canvas Area — flex-row, fills space between header & controls */}
+            <div className="flex-1 flex flex-row gap-4 p-4 md:p-6 min-h-0 overflow-hidden">
+                {/* Local Feed */}
+                <div className="flex-1 min-w-0 relative bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden shadow-xl">
+                    {myStream && localVideoEnabled ? (
+                        <Player
+                            url={myStream}
+                            muted
+                            playing
+                            playsinline
+                            width="100%"
+                            height="100%"
+                            style={{ objectFit: 'cover', position: 'absolute', inset: 0 }}
+                        />
+                    ) : (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/80">
+                            <div className="h-16 w-16 rounded-full bg-gradient-to-tr from-accent-sunset/20 to-accent-dusk/20 border border-accent-sunset/30 flex items-center justify-center text-white font-bold text-lg">
+                                You
+                            </div>
+                            <p className="text-[11px] font-mono text-zinc-600 mt-3 uppercase tracking-wider">Camera Muted</p>
+                        </div>
+                    )}
+                    <div className="absolute bottom-3 left-3 bg-zinc-950/70 border border-hairline/80 backdrop-blur-md px-3 py-1 rounded-lg pointer-events-none">
+                        <span className="text-xs font-semibold text-white">You</span>
+                    </div>
+                </div>
+
+                {/* Remote Feed(s) */}
+                {remoteStream && remoteStream.length > 0 ? (
+                    remoteStream.map((stream: any, idx: number) => (
+                        <div key={idx} className="flex-1 min-w-0 relative bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden shadow-xl">
                             <Player
-                                url={myStream}
-                                muted
+                                url={stream}
                                 playing
+                                muted={!remoteAudioEnabled}
                                 playsinline
+                                onError={(e: any) => console.error("Remote player error", e)}
                                 width="100%"
                                 height="100%"
-                                style={{ objectFit: 'cover' }}
+                                style={{ objectFit: 'cover', position: 'absolute', inset: 0 }}
                             />
-                        ) : (
-                            <div className="h-full flex flex-col items-center justify-center bg-zinc-950/80">
-                                <div className="h-16 w-16 rounded-full bg-gradient-to-tr from-accent-sunset/20 to-accent-dusk/20 border border-accent-sunset/30 flex items-center justify-center text-white font-bold text-lg">
-                                    You
-                                </div>
-                                <p className="text-[11px] font-mono text-zinc-600 mt-3 uppercase tracking-wider">Camera Muted</p>
+                            <div className="absolute bottom-3 left-3 bg-zinc-950/70 border border-hairline/80 backdrop-blur-md px-3 py-1 rounded-lg pointer-events-none">
+                                <span className="text-xs font-semibold text-white">Guest {idx + 1}</span>
                             </div>
-                        )}
-                        <div className="absolute bottom-4 left-4 bg-zinc-950/70 border border-hairline/80 backdrop-blur-md px-3 py-1 rounded-lg">
-                            <span className="text-xs font-semibold text-white">You</span>
                         </div>
+                    ))
+                ) : remoteSocketId ? (
+                    /* Participant joined but stream not yet paired */
+                    <div className="flex-1 min-w-0 relative bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden shadow-xl flex flex-col items-center justify-center">
+                        <div className="h-16 w-16 rounded-full bg-zinc-900 border border-hairline flex items-center justify-center text-zinc-500 font-bold text-lg">G</div>
+                        <p className="text-[11px] font-mono text-zinc-600 mt-3 uppercase tracking-wider">Connecting Video...</p>
                     </div>
-
-                    {/* Remote Feeds */}
-                    {remoteStream && remoteStream.length > 0 ? (
-                        remoteStream.map((stream: any, idx: number) => (
-                            <div key={idx} className="aspect-video bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden relative group shadow-xl">
-                                <Player
-                                    url={stream}
-                                    playing
-                                    muted={!remoteAudioEnabled}
-                                    playsinline
-                                    onError={(e: any) => console.error("Remote player error", e)}
-                                    width="100%"
-                                    height="100%"
-                                    style={{ objectFit: 'cover' }}
-                                />
-                                <div className="absolute bottom-4 left-4 bg-zinc-950/70 border border-hairline/80 backdrop-blur-md px-3 py-1 rounded-lg">
-                                    <span className="text-xs font-semibold text-white">Guest {idx + 1}</span>
-                                </div>
-                            </div>
-                        ))
-                    ) : (
-                        // If participant exists but stream not paired/sent yet
-                        remoteSocketId && (
-                            <div className="aspect-video bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden relative flex flex-col items-center justify-center bg-zinc-950/80">
-                                <div className="h-16 w-16 rounded-full bg-zinc-900 border border-hairline flex items-center justify-center text-zinc-500 font-bold text-lg">
-                                    G
-                                </div>
-                                <p className="text-[11px] font-mono text-zinc-600 mt-3 uppercase tracking-wider">Connecting Video...</p>
-                            </div>
-                        )
-                    )}
-
-                    {/* Waiting placeholder if completely alone */}
-                    {!remoteSocketId && (
-                        <div className="aspect-video bg-zinc-900/10 border border-dashed border-hairline rounded-2xl overflow-hidden relative flex flex-col items-center justify-center">
-                            <div className="h-12 w-12 rounded-full border border-dashed border-hairline flex items-center justify-center text-zinc-600 text-lg">
-                                👤
-                            </div>
-                            <p className="text-xs text-zinc-600 mt-3 font-semibold">Waiting for guest to join...</p>
-                            <p className="text-[10px] text-zinc-500 mt-1 font-mono">{inviteUrl}</p>
-                        </div>
-                    )}
-                </div>
+                ) : (
+                    /* Waiting for anyone to join */
+                    <div className="flex-1 min-w-0 relative bg-zinc-900/10 border border-dashed border-hairline rounded-2xl overflow-hidden flex flex-col items-center justify-center">
+                        <div className="h-12 w-12 rounded-full border border-dashed border-hairline flex items-center justify-center text-zinc-600 text-lg">👤</div>
+                        <p className="text-xs text-zinc-600 mt-3 font-semibold">Waiting for guest to join...</p>
+                        <p className="text-[10px] text-zinc-500 mt-1 font-mono">{inviteUrl}</p>
+                    </div>
+                )}
             </div>
 
             {/* Bottom Controls Panel */}
