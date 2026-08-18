@@ -1,29 +1,18 @@
 import { Link } from "react-router-dom";
+import { AppHeader } from "../components/podora-ui";
 
 function LegalPage({ title }: { title: string }) {
     return (
-        <div className="min-h-screen bg-canvas text-white">
-            <header className="border-b border-hairline/70">
-                <div className="mx-auto flex max-w-[1200px] items-center justify-between px-5 py-4 sm:px-6 lg:px-8">
-                    <Link className="flex items-center gap-3" to="/">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full border border-white/25 text-[13px] font-mono tracking-[0.18em] text-white">
-                            PS
-                        </span>
-                        <span className="font-display text-[15px] tracking-[-0.03em] sm:text-base">Podora Studio</span>
-                    </Link>
-                    <Link
-                        to="/"
-                        className="inline-flex items-center justify-center rounded-full border border-white/25 px-4 py-2 text-sm text-white transition-colors hover:border-white/45 hover:bg-white/5"
-                    >
-                        Back home
-                    </Link>
-                </div>
-            </header>
+        <div className="min-h-screen bg-canvas text-white selection:bg-white/10">
+            <AppHeader />
 
-            <main className="mx-auto max-w-[800px] px-5 py-16 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
-                <p className="font-mono text-[12px] uppercase tracking-[0.22em] text-body-mid">Legal</p>
-                <h1 className="mt-4 font-display text-[42px] leading-none tracking-tighter text-white sm:text-[56px]">{title}</h1>
-                <div className="mt-8 space-y-6 text-[16px] leading-7 text-body-mid">
+            <main className="mx-auto max-w-[800px] px-6 py-16 sm:py-20 lg:py-24">
+                <div className="inline-block rounded-md bg-zinc-900 border border-zinc-800 px-2.5 py-1 text-[11px] font-mono uppercase tracking-[0.2em] text-body-mid">
+                    Legal
+                </div>
+                <h1 className="mt-4 font-display text-[36px] font-extrabold tracking-tight text-white sm:text-[48px]">{title}</h1>
+                
+                <div className="mt-8 space-y-6 text-[15px] leading-relaxed text-body-mid border-t border-hairline/60 pt-8">
                     <p>
                         Podora Studio is a remote podcast recording platform built for creators. Recordings are captured locally in the browser,
                         uploaded in chunks to secure cloud storage, and processed after the session ends.
@@ -32,6 +21,15 @@ function LegalPage({ title }: { title: string }) {
                         This page exists as a lightweight legal placeholder for the current landing experience. It is intentionally concise
                         while the product surface is still focused on the recording workflow.
                     </p>
+                </div>
+
+                <div className="mt-10">
+                    <Link
+                        to="/"
+                        className="inline-flex items-center justify-center rounded-xl border border-hairline px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-body hover:border-white/30 hover:bg-white/5 transition-colors"
+                    >
+                        Back Home
+                    </Link>
                 </div>
             </main>
         </div>
