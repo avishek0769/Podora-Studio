@@ -1,4 +1,4 @@
-import { SERVER_ADDRESS } from "../constants.js";
+import { SERVER_ADDRESS } from "../constants";
 
 const GQL_URL = `${SERVER_ADDRESS}/graphql`;
 

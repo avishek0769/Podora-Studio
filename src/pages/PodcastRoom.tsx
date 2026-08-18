@@ -45,7 +45,7 @@ function PodcastRoom() {
 
     const podcastName = podcast?.name ?? "Loading…";
     const creatorName = podcast?.host?.fullname ?? "Host";
-    const roomStatus = podcast ? (podcast.isLive ? "live" : "completed") : "completed";
+    const roomStatus = podcast ? (podcast.isLive ? "recording" : "completed") : "completed";
 
     return (
         <PageShell

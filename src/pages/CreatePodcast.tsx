@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@clerk/react";
-import { Card, OutlineButton, PageShell, PrimaryButton } from "../components/podora-ui";
+import { Card, PageShell, PrimaryButton } from "../components/podora-ui";
 import { gql, CREATE_PODCAST } from "../lib/gql";
 
 function CreatePodcast() {

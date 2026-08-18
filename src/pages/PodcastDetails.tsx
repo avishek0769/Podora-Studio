@@ -165,7 +165,7 @@ function PodcastDetails() {
             description="Access recording sessions, track real-time processing states, view invitation timelines, and export assets."
             actions={
                 <>
-                    <StatusPill status={podcast.isLive ? "live" : "completed"} />
+                    <StatusPill status={podcast.isLive ? "recording" : "completed"} />
                     <PrimaryButton href={`/live/${podcast._id}`}>Open Room</PrimaryButton>
                     <OutlineButton href="/dashboard">Dashboard</OutlineButton>
                 </>

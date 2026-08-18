@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { PodcastStatus } from "../lib/podora-data";
+import { Show, SignInButton, UserButton } from "@clerk/react";
 
 const statusTone: Record<PodcastStatus, string> = {
     waiting: "border-zinc-800 bg-zinc-900/50 text-zinc-400",
@@ -49,11 +50,22 @@ export function AppHeader() {
                     <Link to="/" className="text-sm font-medium text-body-mid hover:text-white transition-colors">
                         Landing
                     </Link>
+                    <Show when="signed-in">
+                        <UserButton />
+                    </Show>
+                    <Show when="signed-out">
+                        <SignInButton mode="modal">
+                            <button className="text-sm font-medium text-body-mid hover:text-white transition-colors">
+                                Sign In
+                            </button>
+                        </SignInButton>
+                    </Show>
                 </nav>
             </div>
         </header>
     );
 }
+
 
 export function PageShell({
     title,

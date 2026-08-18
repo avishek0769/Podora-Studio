@@ -1,7 +1,6 @@
 import React, { createContext, useMemo } from "react";
 import { io } from "socket.io-client";
-// @ts-ignore
-import { SERVER_ADDRESS } from "../constants.js";
+import { SERVER_ADDRESS } from "../constants";
 
 export const SocketContext = createContext<any>(null);
 

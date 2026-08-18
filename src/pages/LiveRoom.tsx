@@ -511,10 +511,10 @@ function LiveRoom() {
                 </div>
             </header>
 
-            {/* Video Canvas Area — flex-row, fills space between header & controls */}
-            <div className="flex-1 flex flex-row gap-4 p-4 md:p-6 min-h-0 overflow-hidden">
+            {/* Video Canvas Area — adaptive grid, fills space between header & controls */}
+            <div className={`flex-1 grid ${getGridLayout(totalParticipants)} gap-4 p-4 md:p-6 min-h-0 overflow-hidden`}>
                 {/* Local Feed */}
-                <div className="flex-1 min-w-0 relative bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden shadow-xl">
+                <div className="relative bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden shadow-xl">
                     {myStream && localVideoEnabled ? (
                         <Player
                             url={myStream}
@@ -541,7 +541,7 @@ function LiveRoom() {
                 {/* Remote Feed(s) */}
                 {remoteStream && remoteStream.length > 0 ? (
                     remoteStream.map((stream: any, idx: number) => (
-                        <div key={idx} className="flex-1 min-w-0 relative bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden shadow-xl">
+                        <div key={idx} className="relative bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden shadow-xl">
                             <Player
                                 url={stream}
                                 playing
@@ -559,13 +559,13 @@ function LiveRoom() {
                     ))
                 ) : remoteSocketId ? (
                     /* Participant joined but stream not yet paired */
-                    <div className="flex-1 min-w-0 relative bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden shadow-xl flex flex-col items-center justify-center">
+                    <div className="relative bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden shadow-xl flex flex-col items-center justify-center">
                         <div className="h-16 w-16 rounded-full bg-zinc-900 border border-hairline flex items-center justify-center text-zinc-500 font-bold text-lg">G</div>
                         <p className="text-[11px] font-mono text-zinc-600 mt-3 uppercase tracking-wider">Connecting Video...</p>
                     </div>
                 ) : (
                     /* Waiting for anyone to join */
-                    <div className="flex-1 min-w-0 relative bg-zinc-900/10 border border-dashed border-hairline rounded-2xl overflow-hidden flex flex-col items-center justify-center">
+                    <div className="relative bg-zinc-900/10 border border-dashed border-hairline rounded-2xl overflow-hidden flex flex-col items-center justify-center">
                         <div className="h-12 w-12 rounded-full border border-dashed border-hairline flex items-center justify-center text-zinc-600 text-lg">👤</div>
                         <p className="text-xs text-zinc-600 mt-3 font-semibold">Waiting for guest to join...</p>
                         <p className="text-[10px] text-zinc-500 mt-1 font-mono">{inviteUrl}</p>

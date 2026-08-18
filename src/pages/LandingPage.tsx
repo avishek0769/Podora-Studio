@@ -1,4 +1,6 @@
 import { Link } from "react-router-dom";
+import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/react";
+
 
 const navigationLinks = [
     { label: "Why", href: "#why" },
@@ -110,12 +112,29 @@ function LandingPage() {
                         ))}
                     </nav>
 
-                    <a
-                        href="#contact"
-                        className="inline-flex items-center justify-center rounded-full border border-white/25 px-4 py-2 text-sm text-white transition-colors hover:border-white/45 hover:bg-white hover:text-canvas"
-                    >
-                        Get started for free
-                    </a>
+                    <div className="flex items-center gap-4">
+                        <Show when="signed-in">
+                            <Link
+                                to="/dashboard"
+                                className="inline-flex items-center justify-center rounded-full border border-white/25 px-4 py-2 text-sm text-white transition-colors hover:border-white/45 hover:bg-white hover:text-canvas"
+                            >
+                                Dashboard
+                            </Link>
+                            <UserButton />
+                        </Show>
+                        <Show when="signed-out">
+                            <SignInButton mode="modal">
+                                <button className="text-sm font-medium text-body-mid hover:text-white transition-colors cursor-pointer">
+                                    Sign In
+                                </button>
+                            </SignInButton>
+                            <SignUpButton mode="modal">
+                                <button className="inline-flex items-center justify-center rounded-full border border-white/25 px-4 py-2 text-sm text-white transition-colors hover:border-white/45 hover:bg-white hover:text-canvas cursor-pointer">
+                                    Sign Up
+                                </button>
+                            </SignUpButton>
+                        </Show>
+                    </div>
                 </div>
             </header>
 
@@ -135,12 +154,21 @@ function LandingPage() {
                             </p>
 
                             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-                                <a
-                                    href="#contact"
-                                    className="inline-flex items-center justify-center rounded-full border border-white/25 bg-transparent px-5 py-2.5 text-sm text-white transition-colors hover:border-white hover:bg-white hover:text-canvas"
-                                >
-                                    Start Recording
-                                </a>
+                                <Show when="signed-in">
+                                    <Link
+                                        to="/dashboard"
+                                        className="inline-flex items-center justify-center rounded-full border border-white/25 bg-transparent px-5 py-2.5 text-sm text-white transition-colors hover:border-white hover:bg-white hover:text-canvas"
+                                    >
+                                        Start Recording
+                                    </Link>
+                                </Show>
+                                <Show when="signed-out">
+                                    <SignInButton mode="modal">
+                                        <button className="inline-flex items-center justify-center rounded-full border border-white/25 bg-transparent px-5 py-2.5 text-sm text-white transition-colors hover:border-white hover:bg-white hover:text-canvas cursor-pointer">
+                                            Start Recording
+                                        </button>
+                                    </SignInButton>
+                                </Show>
                             </div>
 
                             <div className="mt-10 grid gap-3 sm:grid-cols-3">
@@ -403,12 +431,21 @@ function LandingPage() {
                                 </div>
 
                                 <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
-                                    <a
-                                        href="mailto:hello@podorastudio.com"
-                                        className="inline-flex items-center justify-center rounded-full border border-white bg-transparent px-5 py-2.5 text-sm text-white transition-colors hover:bg-white hover:text-canvas"
-                                    >
-                                        Start Recording
-                                    </a>
+                                    <Show when="signed-in">
+                                        <Link
+                                            to="/dashboard"
+                                            className="inline-flex items-center justify-center rounded-full border border-white bg-transparent px-5 py-2.5 text-sm text-white transition-colors hover:bg-white hover:text-canvas"
+                                        >
+                                            Start Recording
+                                        </Link>
+                                    </Show>
+                                    <Show when="signed-out">
+                                        <SignInButton mode="modal">
+                                            <button className="inline-flex items-center justify-center rounded-full border border-white bg-transparent px-5 py-2.5 text-sm text-white transition-colors hover:bg-white hover:text-canvas cursor-pointer">
+                                                Start Recording
+                                            </button>
+                                        </SignInButton>
+                                    </Show>
                                     <Link
                                         to="/privacy-policy"
                                         className="inline-flex items-center justify-center rounded-full border border-white/25 px-5 py-2.5 text-sm text-white transition-colors hover:border-white/45 hover:bg-white/5"

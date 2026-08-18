@@ -95,7 +95,7 @@ function Dashboard() {
                                         <p className="mt-1 text-[11px] font-mono text-zinc-500">{podcast._id}</p>
                                     </div>
                                     <div className="flex items-center">
-                                        <StatusPill status={podcast.isLive ? "live" : "completed"} />
+                                        <StatusPill status={podcast.isLive ? "recording" : "completed"} />
                                     </div>
                                     <p className="text-xs text-body-mid font-mono">{formatDate(podcast.startTime) ?? "Waiting"}</p>
                                     <p className="text-xs text-body-mid font-mono">{formatDate(podcast.endTime) ?? "—"}</p>
