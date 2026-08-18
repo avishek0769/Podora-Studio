@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Card, OutlineButton, PageShell, PrimaryButton, StatusPill } from "../components/podora-ui";
 import { currentRoom, podcasts } from "../lib/podora-data";
 

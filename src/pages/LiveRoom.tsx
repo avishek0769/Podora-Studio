@@ -1,41 +1,41 @@
 import { useContext, useEffect, useRef, useState, useCallback } from 'react';
 import ReactPlayer from "react-player";
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom';
 import { SocketContext } from '../context/SocketProvider.tsx';
 import * as mediasoupClient from "mediasoup-client";
 import { podcasts } from "../lib/podora-data";
 
+const Player = ReactPlayer as any;
+
 function LiveRoom() {
-    const [myStream, setMyStream] = useState();
-    const [isConnected, setIsConnected] = useState(null);
-    const [remoteStream, setRemoteStream] = useState([]);
-    const [remoteSocketId, setRemoteSocketId] = useState(null);
-    const [showUserLeftPopup, setShowUserLeftPopup] = useState(false);
-    const [device, setDevice] = useState();
-    const [rtpCapabilities, setRtpCapabilities] = useState();
-    const [producerTransport, setProducerTransport] = useState();
-    const [audioTransporter, setAudioTransporter] = useState();
-    const [videoTransporter, setVideoTransporter] = useState();
-    const [removeStream, setRemoveStream] = useState(false);
-    const [remoteAudioEnabled, setRemoteAudioEnabled] = useState(true);
+    const [myStream, setMyStream] = useState<any>(null);
+    const [isConnected, setIsConnected] = useState<boolean | null>(null);
+    const [remoteStream, setRemoteStream] = useState<any[]>([]);
+    const [remoteSocketId, setRemoteSocketId] = useState<string | null>(null);
+    const [showUserLeftPopup, setShowUserLeftPopup] = useState<boolean>(false);
+    const [device, setDevice] = useState<any>();
+    const [rtpCapabilities, setRtpCapabilities] = useState<any>();
+    const [producerTransport, setProducerTransport] = useState<any>();
+    const [removeStream, setRemoveStream] = useState<boolean>(false);
+    const [remoteAudioEnabled, setRemoteAudioEnabled] = useState<boolean>(true);
     
     // Local device controls state
-    const [localMicEnabled, setLocalMicEnabled] = useState(true);
-    const [localVideoEnabled, setLocalVideoEnabled] = useState(true);
-    const [copied, setCopied] = useState(false);
+    const [localMicEnabled, setLocalMicEnabled] = useState<boolean>(true);
+    const [localVideoEnabled, setLocalVideoEnabled] = useState<boolean>(true);
+    const [copied, setCopied] = useState<boolean>(false);
 
-    const pendingVideoTracksRef = useRef({});
-    const pendingAudioTracksRef = useRef({});
-    const consumedProducerIdsRef = useRef(new Set()); // prevents duplicate consumers
-    const socket = useContext(SocketContext);
+    const pendingVideoTracksRef = useRef<any>({});
+    const pendingAudioTracksRef = useRef<any>({});
+    const consumedProducerIdsRef = useRef<any>(new Set()); // prevents duplicate consumers
+    const socket = useContext(SocketContext) as any;
     const navigate = useNavigate();
-    const producerTransRef = useRef(false);
-    const isSendTransportConnectedRef = useRef(false);
-    const roomJoinedRef = useRef(false);
-    const producersGot = useRef(false);
-    const deviceRef = useRef(null);
-    const consumerTransportRef = useRef([]);
-    const producerTransportRef = useRef([]);
+    const producerTransRef = useRef<boolean>(false);
+    const isSendTransportConnectedRef = useRef<boolean>(false);
+    const roomJoinedRef = useRef<boolean>(false);
+    const producersGot = useRef<boolean>(false);
+    const deviceRef = useRef<any>(null);
+    const consumerTransportRef = useRef<any>([]);
+    const producerTransportRef = useRef<any>([]);
 
     const { podcastId } = useParams();
     const podcast = podcasts.find((p) => p.id === podcastId);
@@ -68,31 +68,37 @@ function LiveRoom() {
         }
     };
 
-    const handleUserJoined = useCallback(({ socketId }) => {
+    const handleUserJoined = useCallback(({ socketId }: { socketId: string }) => {
         setRemoteSocketId(socketId);
-        socket.emit("user-joined-confirm:server", { user2Id: socketId, socketId: socket.id });
+        if (socket) {
+            socket.emit("user-joined-confirm:server", { user2Id: socketId, socketId: socket.id });
+        }
     }, [setRemoteSocketId, socket]);
 
-    const handleUserJoinedConfirm = useCallback((socketId) => {
+    const handleUserJoinedConfirm = useCallback((socketId: string) => {
         setRemoteSocketId(socketId);
         console.log(`User ${socketId} was waiting !`);
     }, [setRemoteSocketId]);
 
     let i = 0;
     const getProducers = () => {
-        socket.emit("getProducers", peer => {
-            console.log("Getting Producers ", ++i, peer);
-            const flatProducerIds = peer.flat();
-            signalNewRecvTransport(flatProducerIds);
-        });
+        if (socket) {
+            socket.emit("getProducers", (peer: any) => {
+                console.log("Getting Producers ", ++i, peer);
+                const flatProducerIds = peer.flat();
+                signalNewRecvTransport(flatProducerIds);
+            });
+        }
     };
 
-    const handleProducerClose = ({ remoteProducerId }) => {
-        const consumerToClose = consumerTransportRef.current.find(transportData => transportData.remoteProducerId === remoteProducerId);
-        consumerTransportRef.current = consumerTransportRef.current.filter(transportData => transportData.remoteProducerId !== remoteProducerId);
+    const handleProducerClose = ({ remoteProducerId }: { remoteProducerId: string }) => {
+        const consumerToClose = consumerTransportRef.current.find((transportData: any) => transportData.remoteProducerId === remoteProducerId);
+        consumerTransportRef.current = consumerTransportRef.current.filter((transportData: any) => transportData.remoteProducerId !== remoteProducerId);
 
-        consumerToClose.transport.close();
-        consumerToClose.consumer.close();
+        if (consumerToClose) {
+            consumerToClose.transport.close();
+            consumerToClose.consumer.close();
+        }
 
         setRemoveStream(true);
         setShowUserLeftPopup(true);
@@ -101,23 +107,23 @@ function LiveRoom() {
         }, 2500);
     };
 
-    const handleNewProducer = ({ newProducers, i }) => {
+    const handleNewProducer = ({ newProducers, i }: { newProducers: any, i: any }) => {
         console.log("New Producer", i, newProducers);
         signalNewRecvTransport(newProducers);
     };
 
     const handleCallEnd = () => {
-        producerTransportRef.current.forEach(producerData => {
+        producerTransportRef.current.forEach((producerData: any) => {
             producerData.transport.close();
             producerData.producer.close();
         });
-        consumerTransportRef.current.forEach(consumerData => {
+        consumerTransportRef.current.forEach((consumerData: any) => {
             consumerData.transport.close();
             consumerData.consumer.close();
         });
         
         if (myStream) {
-            myStream.getTracks().forEach(track => {
+            myStream.getTracks().forEach((track: any) => {
                 track.stop();
             });
         }
@@ -127,9 +133,11 @@ function LiveRoom() {
     };
 
     const joinRoom = () => {
-        socket.emit("joinRoom", { roomId: podcastId }, (data) => {
-            setRtpCapabilities(data.rtpCapabilities);
-        });
+        if (socket) {
+            socket.emit("joinRoom", { roomId: podcastId }, (data: any) => {
+                setRtpCapabilities(data.rtpCapabilities);
+            });
+        }
     };
 
     const createDevice = useCallback(async () => {
@@ -140,49 +148,51 @@ function LiveRoom() {
             setDevice(newDevice);
             return newDevice;
         }
-        catch (error) {
+        catch (error: any) {
             console.log(error);
             if (error.name === 'UnsupportedError') console.warn('browser not supported');
         }
     }, [rtpCapabilities]);
 
     const createSendTransport = useCallback(() => {
-        socket.emit("createWebRTCTransport", { consumer: false }, ({ params }) => {
-            const producerTransport = deviceRef.current.createSendTransport(params);
+        if (socket) {
+            socket.emit("createWebRTCTransport", { consumer: false }, ({ params }: any) => {
+                const producerTransport = deviceRef.current.createSendTransport(params);
 
-            producerTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
-                try {
-                    await socket.emit("producerTransport-connect", { dtlsParameters });
-                    callback();
-                }
-                catch (error) {
-                    errback(error);
-                }
-            });
+                producerTransport.on("connect", async ({ dtlsParameters }: any, callback: any, errback: any) => {
+                    try {
+                        await socket.emit("producerTransport-connect", { dtlsParameters });
+                        callback();
+                    }
+                    catch (error: any) {
+                        errback(error);
+                    }
+                });
 
-            producerTransport.on("produce", (parameters, callback, errback) => {
-                try {
-                    socket.emit("producerTransport-produce", {
-                        kind: parameters.kind,
-                        rtpParameters: parameters.rtpParameters,
-                        appData: parameters.appData,
-                    }, ({ id, producerExists }) => {
-                        callback({ id });
-                        if (producerExists) {
-                            if(!producersGot.current){
-                                getProducers();
-                                producersGot.current = true;
+                producerTransport.on("produce", (parameters: any, callback: any, errback: any) => {
+                    try {
+                        socket.emit("producerTransport-produce", {
+                            kind: parameters.kind,
+                            rtpParameters: parameters.rtpParameters,
+                            appData: parameters.appData,
+                        }, ({ id, producerExists }: any) => {
+                            callback({ id });
+                            if (producerExists) {
+                                if(!producersGot.current){
+                                    getProducers();
+                                    producersGot.current = true;
+                                }
                             }
-                        }
-                    });
-                }
-                catch (error) {
-                    errback(error);
-                }
+                        });
+                    }
+                    catch (error: any) {
+                        errback(error);
+                    }
+                });
+                setProducerTransport(producerTransport);
             });
-            setProducerTransport(producerTransport);
-        });
-    }, [device]);
+        }
+    }, [device, socket]);
 
     const connectSendTransport = useCallback(async () => {
         let videoTrack = myStream.getVideoTracks()[0];
@@ -215,93 +225,96 @@ function LiveRoom() {
             console.log("Audio Producer Transport closed");
         });
 
-        setVideoTransporter(newVideoProducer);
-        setAudioTransporter(newAudioProducer);
+        setIsConnected(true);
     }, [producerTransport, myStream]);
 
-    const signalNewRecvTransport = useCallback((remoteProducerIds) => {
-        socket.emit("createWebRTCTransport", { consumer: true }, ({ params }) => {
-            if (params.error) {
-                console.error(params.error);
-                return;
-            }
-            let consumerTransport = deviceRef.current.createRecvTransport(params);
-
-            consumerTransport.on("connect", ({ dtlsParameters }, callback, errback) => {
-                try {
-                    socket.emit("consumerTransport-connect", {
-                        dtlsParameters,
-                        serverConsumerTransportId: params.id
-                    });
-                    callback();
+    const signalNewRecvTransport = useCallback((remoteProducerIds: any) => {
+        if (socket) {
+            socket.emit("createWebRTCTransport", { consumer: true }, ({ params }: any) => {
+                if (params.error) {
+                    console.error(params.error);
+                    return;
                 }
-                catch (error) {
-                    errback(error);
-                }
-            });
+                let consumerTransport = deviceRef.current.createRecvTransport(params);
 
-            remoteProducerIds.forEach(remoteProducerId => {
-                connectRecvTransport(consumerTransport, remoteProducerId, params.id);
-            });
-        });
-    }, [device]);
+                consumerTransport.on("connect", ({ dtlsParameters }: any, callback: any, errback: any) => {
+                    try {
+                        socket.emit("consumerTransport-connect", {
+                            dtlsParameters,
+                            serverConsumerTransportId: params.id
+                        });
+                        callback();
+                    }
+                    catch (error: any) {
+                        errback(error);
+                    }
+                });
 
-    const connectRecvTransport = useCallback((consumerTransport, remoteProducerId, serverConsumerTransportId) => {
+                remoteProducerIds.forEach((remoteProducerId: string) => {
+                    connectRecvTransport(consumerTransport, remoteProducerId, params.id);
+                });
+            });
+        }
+    }, [device, socket]);
+
+    const connectRecvTransport = useCallback((consumerTransport: any, remoteProducerId: string, serverConsumerTransportId: string) => {
         if (consumedProducerIdsRef.current.has(remoteProducerId)) {
             console.log("Already consuming producer", remoteProducerId, "— skipping");
             return;
         }
         consumedProducerIdsRef.current.add(remoteProducerId);
 
-        socket.emit("consumerTransport-consume", {
-            rtpCapabilities: deviceRef.current.rtpCapabilities,
-            serverConsumerTransportId,
-            remoteProducerId
-        },
-            async ({ params }) => {
-                if (params.error) {
-                    console.error(params.error);
-                    consumedProducerIdsRef.current.delete(remoteProducerId);
-                    return;
-                }
-                let consumer = await consumerTransport.consume(params);
-
-                consumerTransportRef.current = [
-                    ...consumerTransportRef.current,
-                    {
-                        transport: consumerTransport,
-                        remoteProducerId,
-                        consumer,
-                        serverConsumerTransportId
+        if (socket) {
+            socket.emit("consumerTransport-consume", {
+                rtpCapabilities: deviceRef.current.rtpCapabilities,
+                serverConsumerTransportId,
+                remoteProducerId
+            },
+                async ({ params }: any) => {
+                    if (params.error) {
+                        console.error(params.error);
+                        consumedProducerIdsRef.current.delete(remoteProducerId);
+                        return;
                     }
-                ];
+                    let consumer = await consumerTransport.consume(params);
 
-                const { track } = consumer;
+                    consumerTransportRef.current = [
+                        ...consumerTransportRef.current,
+                        {
+                            transport: consumerTransport,
+                            remoteProducerId,
+                            consumer,
+                            serverConsumerTransportId
+                        }
+                    ];
 
-                socket.emit("consumer-resume", { consumerId: consumer.id });
+                    const { track } = consumer;
 
-                if (track.kind === "video") {
-                    pendingVideoTracksRef.current[remoteProducerId] = track;
-                } else {
-                    pendingAudioTracksRef.current[remoteProducerId] = track;
-                }
+                    socket.emit("consumer-resume", { consumerId: consumer.id });
 
-                const videoKeys = Object.keys(pendingVideoTracksRef.current);
-                const audioKeys = Object.keys(pendingAudioTracksRef.current);
-                const minPaired = Math.min(videoKeys.length, audioKeys.length);
-                if (minPaired > 0) {
-                    const newStreams = [];
-                    for (let idx = 0; idx < minPaired; idx++) {
-                        const vTrack = pendingVideoTracksRef.current[videoKeys[idx]];
-                        const aTrack = pendingAudioTracksRef.current[audioKeys[idx]];
-                        newStreams.push(new MediaStream([vTrack, aTrack]));
-                        delete pendingVideoTracksRef.current[videoKeys[idx]];
-                        delete pendingAudioTracksRef.current[audioKeys[idx]];
+                    if (track.kind === "video") {
+                        pendingVideoTracksRef.current[remoteProducerId] = track;
+                    } else {
+                        pendingAudioTracksRef.current[remoteProducerId] = track;
                     }
-                    setRemoteStream(prev => [...prev, ...newStreams]);
-                }
-            });
-    }, [device]);
+
+                    const videoKeys = Object.keys(pendingVideoTracksRef.current);
+                    const audioKeys = Object.keys(pendingAudioTracksRef.current);
+                    const minPaired = Math.min(videoKeys.length, audioKeys.length);
+                    if (minPaired > 0) {
+                        const newStreams: any[] = [];
+                        for (let idx = 0; idx < minPaired; idx++) {
+                            const vTrack = pendingVideoTracksRef.current[videoKeys[idx]];
+                            const aTrack = pendingAudioTracksRef.current[audioKeys[idx]];
+                            newStreams.push(new MediaStream([vTrack, aTrack]));
+                            delete pendingVideoTracksRef.current[videoKeys[idx]];
+                            delete pendingAudioTracksRef.current[audioKeys[idx]];
+                        }
+                        setRemoteStream(prev => [...prev, ...newStreams]);
+                    }
+                });
+        }
+    }, [device, socket]);
 
     useEffect(() => {
         if (rtpCapabilities) {
@@ -340,27 +353,31 @@ function LiveRoom() {
 
     useEffect(() => {
         if(removeStream && remoteStream) {
-            let filteredStream = remoteStream.filter(stream => stream.active);
+            let filteredStream = remoteStream.filter((stream: any) => stream.active);
             setRemoteStream(filteredStream);
             setRemoveStream(false);
         }
     }, [remoteStream, removeStream]);
 
     useEffect(() => {
-        socket.on("user-joined", handleUserJoined);
-        socket.on("user-joined-confirm:client", handleUserJoinedConfirm);
-        socket.on("new-producer", handleNewProducer);
-        socket.on('producer-closed', handleProducerClose);
+        if (socket) {
+            socket.on("user-joined", handleUserJoined);
+            socket.on("user-joined-confirm:client", handleUserJoinedConfirm);
+            socket.on("new-producer", handleNewProducer);
+            socket.on('producer-closed', handleProducerClose);
+        }
 
         return () => {
-            socket.off("user-joined", handleUserJoined);
-            socket.off("user-joined-confirm:client", handleUserJoinedConfirm);
-            socket.off("new-producer", handleNewProducer);
-            socket.off('producer-closed', handleProducerClose);
+            if (socket) {
+                socket.off("user-joined", handleUserJoined);
+                socket.off("user-joined-confirm:client", handleUserJoinedConfirm);
+                socket.off("new-producer", handleNewProducer);
+                socket.off('producer-closed', handleProducerClose);
+            }
         };
     }, [socket, handleUserJoined, handleUserJoinedConfirm]);
 
-    const getGridLayout = (participantCount) => {
+    const getGridLayout = (participantCount: number) => {
         if (participantCount <= 1) return "grid-cols-1 max-w-3xl mx-auto";
         if (participantCount === 2) return "grid-cols-1 md:grid-cols-2 max-w-5xl mx-auto";
         return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 max-w-7xl mx-auto";
@@ -427,12 +444,11 @@ function LiveRoom() {
                     {/* Local Feed */}
                     <div className="aspect-video bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden relative group shadow-xl">
                         {myStream && localVideoEnabled ? (
-                            <ReactPlayer
+                            <Player
                                 url={myStream}
                                 muted
                                 playing
                                 playsinline
-                                config={{ file: { attributes: { playsInline: true } } }}
                                 width="100%"
                                 height="100%"
                                 style={{ objectFit: 'cover' }}
@@ -452,15 +468,14 @@ function LiveRoom() {
 
                     {/* Remote Feeds */}
                     {remoteStream && remoteStream.length > 0 ? (
-                        remoteStream.map((stream, idx) => (
+                        remoteStream.map((stream: any, idx: number) => (
                             <div key={idx} className="aspect-video bg-zinc-900/40 border border-hairline rounded-2xl overflow-hidden relative group shadow-xl">
-                                <ReactPlayer
+                                <Player
                                     url={stream}
                                     playing
                                     muted={!remoteAudioEnabled}
                                     playsinline
-                                    config={{ file: { attributes: { playsInline: true } } }}
-                                    onError={(e) => console.error("Remote player error", e)}
+                                    onError={(e: any) => console.error("Remote player error", e)}
                                     width="100%"
                                     height="100%"
                                     style={{ objectFit: 'cover' }}
